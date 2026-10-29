@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SmartHospital - Bed Management & Allocation System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="logo-icon">🏥</div>
+                <div>
+                    <h2>SmartHospital</h2>
+                    <span class="subtitle">Bed Allocation & Ops</span>
+                </div>
+            </div>
+            <nav class="nav-menu">
+                <button class="nav-item active" data-tab="overview">
+                    <span class="icon">📊</span> Overview & Live Beds
+                </button>
+                <button class="nav-item" data-tab="rooms-beds">
+                    <span class="icon">🛏️</span> Room & Bed Admin
+                </button>
+                <button class="nav-item" data-tab="patients">
+                    <span class="icon">🧑‍⚕️</span> Patient Admissions
+                </button>
+                <button class="nav-item" data-tab="recommendation">
+                    <span class="icon">⚡</span> Smart Recommendation
+                </button>
+            </nav>
+            <div class="sidebar-footer">
+                <span class="pulse-dot"></span>
+                <span>System Online (Port 8080)</span>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Top Bar -->
+            <header class="topbar">
+                <div class="page-title">
+                    <h1 id="current-view-title">Overview & Live Bed Matrix</h1>
+                    <p id="current-view-desc">Real-time status of hospital rooms, capacity, and bed occupancies</p>
+                </div>
+                <div class="topbar-actions">
+                    <div class="user-badge" id="user-profile-badge">
+                        <span class="user-avatar">👤</span>
+                        <div class="user-details">
+                            <span class="user-name" id="current-user-name">Administrator</span>
+                            <span class="user-role-tag" id="current-user-role">ROLE_ADMIN</span>
+                        </div>
+                    </div>
+                    <button class="btn btn-secondary" onclick="app.refreshAll()" title="Refresh live data">
+                        <span class="icon">🔄</span> Refresh
+                    </button>
+                    <button class="btn btn-secondary" onclick="app.handleLogout()" title="Log out of system">
+                        <span class="icon">🚪</span> Logout
+                    </button>
+                </div>
+            </header>
+
+            <!-- KPI Summary Cards -->
+            <section class="kpi-grid">
+                <div class="kpi-card">
+                    <div class="kpi-icon blue">🚪</div>
+                    <div>
+                        <div class="kpi-label">Total Rooms</div>
+                        <div class="kpi-value" id="stat-total-rooms">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon indigo">🛏️</div>
+                    <div>
+                        <div class="kpi-label">Total Beds</div>
+                        <div class="kpi-value" id="stat-total-beds">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon green">✅</div>
+                    <div>
+                        <div class="kpi-label">Available Beds</div>
+                        <div class="kpi-value green-text" id="stat-available-beds">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon red">🛌</div>
+                    <div>
+                        <div class="kpi-label">Occupied Beds</div>
+                        <div class="kpi-value red-text" id="stat-occupied-beds">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon amber">🛠️</div>
+                    <div>
+                        <div class="kpi-label">In Maintenance</div>
+                        <div class="kpi-value amber-text" id="stat-maintenance-beds">0</div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-icon purple">🧑‍⚕️</div>
+                    <div>
+                        <div class="kpi-label">Active Inpatients</div>
+                        <div class="kpi-value" id="stat-active-patients">0</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- View Tab 1: Overview & Live Beds -->
+            <section id="view-overview" class="view-section active">
+                <div class="section-header">
+                    <h2>Live Room & Bed Matrix</h2>
+                    <div class="filter-group">
+                        <label for="filter-ward">Filter Ward:</label>
+                        <select id="filter-ward" onchange="app.renderRoomsAndBeds()">
+                            <option value="">All Wards</option>
+                        </select>
+                        <label for="filter-status">Bed Status:</label>
+                        <select id="filter-status" onchange="app.renderRoomsAndBeds()">
+                            <option value="">All Statuses</option>
+                            <option value="AVAILABLE">Available Only</option>
+                            <option value="OCCUPIED">Occupied Only</option>
+                            <option value="MAINTENANCE">Maintenance Only</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="room-grid" id="rooms-container">
+                    <div class="loading-placeholder">Loading live room and bed data...</div>
+                </div>
+            </section>
+
+            <!-- View Tab 2: Room & Bed Admin -->
+            <section id="view-rooms-beds" class="view-section">
+                <div class="forms-split-grid">
+                    <!-- Create Room Form -->
+                    <div class="card form-card">
+                        <h3>➕ Register New Room</h3>
+                        <p class="form-desc">Define a new hospital room with care type and department.</p>
+                        <form id="create-room-form" onsubmit="app.handleCreateRoom(event)">
+                            <div class="form-group">
+                                <label for="room-number">Room Number *</label>
+                                <input type="text" id="room-number" placeholder="e.g. 101-ICU, R-204" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="room-type">Room Type *</label>
+                                <select id="room-type" required>
+                                    <option value="">Select Room Type</option>
+                                    <option value="ICU">ICU (Intensive Care)</option>
+                                    <option value="ICU-STEPDOWN">ICU-Stepdown</option>
+                                    <option value="GENERAL">General Ward</option>
+                                    <option value="SEMI_PRIVATE">Semi-Private Room</option>
+                                    <option value="PRIVATE">Private Room</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="room-ward">Ward / Department Name *</label>
+                                <input type="text" id="room-ward" placeholder="e.g. Critical Care, Cardiology, Surgery" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary full-width">Create Room</button>
+                        </form>
+                    </div>
+
+                    <!-- Create Bed Form -->
+                    <div class="card form-card">
+                        <h3>➕ Add Bed to Room</h3>
+                        <p class="form-desc">Assign a new bed to an existing room with default status.</p>
+                        <form id="create-bed-form" onsubmit="app.handleCreateBed(event)">
+                            <div class="form-group">
+                                <label for="bed-room-select">Assign to Room *</label>
+                                <select id="bed-room-select" required>
+                                    <option value="">Select Target Room</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label for="bed-number">Bed Number / Label *</label>
+                                <input type="text" id="bed-number" placeholder="e.g. BED-1, B-02" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="bed-status">Initial Status</label>
+                                <select id="bed-status">
+                                    <option value="AVAILABLE">AVAILABLE</option>
+                                    <option value="MAINTENANCE">MAINTENANCE</option>
+                                </select>
+                            </div>
+                            <button type="submit" class="btn btn-primary full-width">Add Bed</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Comprehensive Bed Inventory Table -->
+                <div class="card table-card">
+                    <h3>All Hospital Beds Inventory</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>Bed ID</th>
+                                    <th>Bed Number</th>
+                                    <th>Room</th>
+                                    <th>Room Type</th>
+                                    <th>Ward</th>
+                                    <th>Status</th>
+                                    <th>Quick Status Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="beds-inventory-table">
+                                <tr><td colspan="7" class="text-center">Loading beds...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- View Tab 3: Patient Admission & Discharge -->
+            <section id="view-patients" class="view-section">
+                <!-- Admission Form -->
+                <div class="card form-card">
+                    <h3>🏥 Patient Admission Desk</h3>
+                    <p class="form-desc">Admit an incoming patient to an available bed. The bed will automatically become OCCUPIED.</p>
+                    <form id="admit-patient-form" onsubmit="app.handleAdmitPatient(event)">
+                        <div class="form-row">
+                            <div class="form-group col-4">
+                                <label for="patient-code">Patient ID / MRN *</label>
+                                <input type="text" id="patient-code" placeholder="e.g. PAT-1001" required>
+                            </div>
+                            <div class="form-group col-4">
+                                <label for="patient-name">Patient Full Name *</label>
+                                <input type="text" id="patient-name" placeholder="e.g. John Doe" required>
+                            </div>
+                            <div class="form-group col-2">
+                                <label for="patient-age">Age *</label>
+                                <input type="number" id="patient-age" min="1" max="130" placeholder="45" required>
+                            </div>
+                            <div class="form-group col-2">
+                                <label for="patient-gender">Gender *</label>
+                                <select id="patient-gender" required>
+                                    <option value="MALE">Male</option>
+                                    <option value="FEMALE">Female</option>
+                                    <option value="OTHER">Other</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="patient-diagnosis">Clinical Diagnosis / Condition *</label>
+                                <input type="text" id="patient-diagnosis" placeholder="e.g. Acute Coronary Syndrome" required>
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="admission-bed-select">Select Available Bed *</label>
+                                <select id="admission-bed-select" required>
+                                    <option value="">Select an available bed...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Admit Patient & Assign Bed</button>
+                    </form>
+                </div>
+
+                <!-- Active Inpatients Table -->
+                <div class="card table-card">
+                    <h3>Currently Admitted Patients (Active Inpatients)</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Patient Code</th>
+                                    <th>Name</th>
+                                    <th>Age/Gender</th>
+                                    <th>Diagnosis</th>
+                                    <th>Assigned Bed</th>
+                                    <th>Room & Ward</th>
+                                    <th>Admission Date</th>
+                                    <th>Discharge Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="active-patients-table">
+                                <tr><td colspan="9" class="text-center">Loading patients...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Discharged Patients Table -->
+                <div class="card table-card">
+                    <h3>Discharged Patients History</h3>
+                    <div class="table-responsive">
+                        <table class="data-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Patient Code</th>
+                                    <th>Name</th>
+                                    <th>Diagnosis</th>
+                                    <th>Discharged From Bed</th>
+                                    <th>Admission Date</th>
+                                    <th>Discharge Date</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="discharged-patients-table">
+                                <tr><td colspan="8" class="text-center">Loading history...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- View Tab 4: Smart Bed Recommendation -->
+            <section id="view-recommendation" class="view-section">
+                <div class="card form-card">
+                    <h3>⚡ Rule-Based Bed Recommendation Engine</h3>
+                    <p class="form-desc">Intelligently ranks available beds by medical care suitability and ward proximity.</p>
+                    <form id="recommend-bed-form" onsubmit="app.handleRecommendBeds(event)">
+                        <div class="form-row">
+                            <div class="form-group col-6">
+                                <label for="rec-room-type">Required Room / Care Level *</label>
+                                <select id="rec-room-type" required>
+                                    <option value="ICU">ICU (Intensive Care Unit)</option>
+                                    <option value="ICU-STEPDOWN">ICU-Stepdown</option>
+                                    <option value="GENERAL">General Ward</option>
+                                    <option value="SEMI_PRIVATE">Semi-Private</option>
+                                    <option value="PRIVATE">Private</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-6">
+                                <label for="rec-ward">Preferred Department / Ward</label>
+                                <input type="text" id="rec-ward" placeholder="e.g. Critical Care, Cardiology, Surgery">
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Find Optimal Available Beds</button>
+                    </form>
+                </div>
+
+                <div class="card table-card">
+                    <h3>Ranked Bed Recommendations</h3>
+                    <div id="recommendation-results" class="recommendations-container">
+                        <p class="text-muted">Enter search criteria above to view ranked bed recommendations.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Notification Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <script src="js/app.js"></script>
+</body>
+</html>
+
