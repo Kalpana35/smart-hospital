@@ -1,5 +1,6 @@
 package com.hospital.smart_hospital.dto;
 
+import com.hospital.smart_hospital.model.DoctorApprovalStatus;
 import com.hospital.smart_hospital.model.Role;
 import java.time.LocalDateTime;
 
@@ -11,6 +12,11 @@ public class UserResponse {
     private Role role;
     private boolean enabled;
     private LocalDateTime createdAt;
+    private String email;
+    private String specialization;
+    private String qualifications;
+    private String medicalRegistrationNumber;
+    private DoctorApprovalStatus approvalStatus;
 
     public UserResponse() {
     }
@@ -22,6 +28,23 @@ public class UserResponse {
         this.role = role;
         this.enabled = enabled;
         this.createdAt = createdAt;
+        this.approvalStatus = DoctorApprovalStatus.APPROVED;
+    }
+
+    public UserResponse(Long id, String username, String fullName, Role role, boolean enabled, LocalDateTime createdAt,
+                        String email, String specialization, String qualifications, String medicalRegistrationNumber,
+                        DoctorApprovalStatus approvalStatus) {
+        this.id = id;
+        this.username = username;
+        this.fullName = fullName;
+        this.role = role;
+        this.enabled = enabled;
+        this.createdAt = createdAt;
+        this.email = email;
+        this.specialization = specialization;
+        this.qualifications = qualifications;
+        this.medicalRegistrationNumber = medicalRegistrationNumber;
+        this.approvalStatus = approvalStatus != null ? approvalStatus : DoctorApprovalStatus.APPROVED;
     }
 
     public Long getId() {
@@ -70,6 +93,46 @@ public class UserResponse {
 
     public void setCreatedAt(LocalDateTime createdAt) {
         this.createdAt = createdAt;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getSpecialization() {
+        return specialization;
+    }
+
+    public void setSpecialization(String specialization) {
+        this.specialization = specialization;
+    }
+
+    public String getQualifications() {
+        return qualifications;
+    }
+
+    public void setQualifications(String qualifications) {
+        this.qualifications = qualifications;
+    }
+
+    public String getMedicalRegistrationNumber() {
+        return medicalRegistrationNumber;
+    }
+
+    public void setMedicalRegistrationNumber(String medicalRegistrationNumber) {
+        this.medicalRegistrationNumber = medicalRegistrationNumber;
+    }
+
+    public DoctorApprovalStatus getApprovalStatus() {
+        return approvalStatus != null ? approvalStatus : DoctorApprovalStatus.APPROVED;
+    }
+
+    public void setApprovalStatus(DoctorApprovalStatus approvalStatus) {
+        this.approvalStatus = approvalStatus;
     }
 }
 

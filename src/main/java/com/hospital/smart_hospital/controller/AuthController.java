@@ -1,6 +1,7 @@
 package com.hospital.smart_hospital.controller;
 
 import com.hospital.smart_hospital.dto.ApiResponse;
+import com.hospital.smart_hospital.dto.DoctorRegistrationRequest;
 import com.hospital.smart_hospital.dto.LoginRequest;
 import com.hospital.smart_hospital.dto.PatientSelfRegistrationRequest;
 import com.hospital.smart_hospital.dto.RegisterRequest;
@@ -8,6 +9,7 @@ import com.hospital.smart_hospital.dto.UserResponse;
 import com.hospital.smart_hospital.exception.BadRequestException;
 import com.hospital.smart_hospital.exception.DuplicateResourceException;
 import com.hospital.smart_hospital.exception.ResourceNotFoundException;
+import com.hospital.smart_hospital.model.DoctorApprovalStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.User;
@@ -15,6 +17,9 @@ import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Optional;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -28,6 +33,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -84,8 +91,19 @@ public class AuthController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ApiResponse.error("Invalid username or password"));
         } catch (DisabledException ex) {
+            Optional<User> optionalUser = userRepository.findByUsernameIgnoreCase(request.getUsername().trim());
+            if (optionalUser.isPresent()) {
+                User u = optionalUser.get();
+                if (u.getApprovalStatus() == DoctorApprovalStatus.PENDING) {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(ApiResponse.error("Your doctor account registration is pending administrator approval. Please wait for an administrator to review and approve your credentials."));
+                } else if (u.getApprovalStatus() == DoctorApprovalStatus.REJECTED) {
+                    return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                            .body(ApiResponse.error("Your doctor account registration has been rejected. Please contact hospital administration for further details."));
+                }
+            }
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(ApiResponse.error("User account is disabled"));
+                    .body(ApiResponse.error("User account is disabled."));
         } catch (AuthenticationException ex) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                     .body(ApiResponse.error("Authentication failed: " + ex.getMessage()));
@@ -185,6 +203,114 @@ public class AuthController {
         );
     }
 
+    @PostMapping("/register-doctor")
+    public ResponseEntity<ApiResponse<UserResponse>> registerDoctor(
+            @RequestBody DoctorRegistrationRequest request
+    ) {
+        validateDoctorRegistrationRequest(request);
+
+        String trimmedUsername = request.getUsername().trim();
+        if (userRepository.existsByUsernameIgnoreCase(trimmedUsername)) {
+            throw new DuplicateResourceException("Username '" + trimmedUsername + "' already exists.");
+        }
+
+        String trimmedEmail = request.getEmail().trim().toLowerCase();
+        if (userRepository.existsByEmailIgnoreCase(trimmedEmail)) {
+            throw new DuplicateResourceException("Email '" + trimmedEmail + "' is already registered.");
+        }
+
+        String trimmedMedReg = request.getMedicalRegistrationNumber().trim();
+        if (userRepository.existsByMedicalRegistrationNumberIgnoreCase(trimmedMedReg)) {
+            throw new DuplicateResourceException("Medical Registration Number '" + trimmedMedReg + "' is already registered.");
+        }
+
+        User doctor = new User();
+        doctor.setUsername(trimmedUsername);
+        doctor.setPassword(passwordEncoder.encode(request.getPassword()));
+        doctor.setFullName(request.getFullName().trim());
+        doctor.setRole(Role.ROLE_DOCTOR);
+        doctor.setEmail(trimmedEmail);
+        doctor.setSpecialization(request.getSpecialization().trim());
+        doctor.setQualifications(request.getQualifications().trim());
+        doctor.setMedicalRegistrationNumber(trimmedMedReg);
+        doctor.setEnabled(false);
+        doctor.setApprovalStatus(DoctorApprovalStatus.PENDING);
+        doctor.setCreatedAt(LocalDateTime.now());
+
+        User saved = userRepository.save(doctor);
+
+        return new ResponseEntity<>(
+                ApiResponse.ok("Doctor registration submitted successfully. Your account is pending administrator approval before you can log in.", mapToResponse(saved)),
+                HttpStatus.CREATED
+        );
+    }
+
+    @GetMapping("/doctors/pending")
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getPendingDoctors() {
+        List<User> pendingDoctors = userRepository.findByRoleAndApprovalStatus(Role.ROLE_DOCTOR, DoctorApprovalStatus.PENDING);
+        List<UserResponse> responses = pendingDoctors.stream().map(this::mapToResponse).toList();
+        return ResponseEntity.ok(ApiResponse.ok("Pending doctor registrations retrieved successfully", responses));
+    }
+
+    @PatchMapping("/doctors/{id}/approve")
+    public ResponseEntity<ApiResponse<UserResponse>> approveDoctor(@PathVariable Long id) {
+        User doctor = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor record with id " + id + " not found."));
+
+        if (doctor.getRole() != Role.ROLE_DOCTOR) {
+            throw new BadRequestException("Target user is not a doctor.");
+        }
+
+        doctor.setApprovalStatus(DoctorApprovalStatus.APPROVED);
+        doctor.setEnabled(true);
+        User saved = userRepository.save(doctor);
+
+        return ResponseEntity.ok(ApiResponse.ok("Doctor account for '" + saved.getFullName() + "' approved successfully.", mapToResponse(saved)));
+    }
+
+    @PatchMapping("/doctors/{id}/reject")
+    public ResponseEntity<ApiResponse<UserResponse>> rejectDoctor(@PathVariable Long id) {
+        User doctor = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Doctor record with id " + id + " not found."));
+
+        if (doctor.getRole() != Role.ROLE_DOCTOR) {
+            throw new BadRequestException("Target user is not a doctor.");
+        }
+
+        doctor.setApprovalStatus(DoctorApprovalStatus.REJECTED);
+        doctor.setEnabled(false);
+        User saved = userRepository.save(doctor);
+
+        return ResponseEntity.ok(ApiResponse.ok("Doctor registration for '" + saved.getFullName() + "' has been rejected.", mapToResponse(saved)));
+    }
+
+    private void validateDoctorRegistrationRequest(DoctorRegistrationRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Registration request cannot be null.");
+        }
+        if (request.getFullName() == null || request.getFullName().trim().isEmpty()) {
+            throw new BadRequestException("Full name is required.");
+        }
+        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+            throw new BadRequestException("Username is required.");
+        }
+        if (request.getEmail() == null || request.getEmail().trim().isEmpty() || !request.getEmail().contains("@")) {
+            throw new BadRequestException("A valid email address is required.");
+        }
+        if (request.getSpecialization() == null || request.getSpecialization().trim().isEmpty()) {
+            throw new BadRequestException("Specialization is required.");
+        }
+        if (request.getQualifications() == null || request.getQualifications().trim().isEmpty()) {
+            throw new BadRequestException("Qualifications are required.");
+        }
+        if (request.getMedicalRegistrationNumber() == null || request.getMedicalRegistrationNumber().trim().isEmpty()) {
+            throw new BadRequestException("Medical registration number is required.");
+        }
+        if (request.getPassword() == null || request.getPassword().length() < 6) {
+            throw new BadRequestException("Password must be at least 6 characters long.");
+        }
+    }
+
     private void validatePatientRegistrationRequest(PatientSelfRegistrationRequest request) {
         if (request == null) {
             throw new BadRequestException("Registration request cannot be null.");
@@ -225,7 +351,12 @@ public class AuthController {
                 user.getFullName(),
                 user.getRole(),
                 user.isEnabled(),
-                user.getCreatedAt()
+                user.getCreatedAt(),
+                user.getEmail(),
+                user.getSpecialization(),
+                user.getQualifications(),
+                user.getMedicalRegistrationNumber(),
+                user.getApprovalStatus()
         );
     }
 }

@@ -123,6 +123,11 @@ export default function App() {
     if (!currentUser) {
       return <Login onLoginSuccess={handleLoginSuccess} />
     }
+    if (currentUser.role !== 'ROLE_ADMIN') {
+      if (currentUser.role === 'ROLE_DOCTOR') return <DoctorDashboard user={currentUser} onLogout={handleLogout} />
+      if (currentUser.role === 'ROLE_PATIENT') return <PatientDashboard user={currentUser} onLogout={handleLogout} />
+      return <Login onLoginSuccess={handleLoginSuccess} />
+    }
     return (
       <AdminDashboard
         user={currentUser}
@@ -134,6 +139,10 @@ export default function App() {
   // Route: Doctor Dashboard
   if (currentPath === '/doctor') {
     if (!currentUser) {
+      return <Login onLoginSuccess={handleLoginSuccess} />
+    }
+    if (currentUser.role !== 'ROLE_DOCTOR' && currentUser.role !== 'ROLE_ADMIN') {
+      if (currentUser.role === 'ROLE_PATIENT') return <PatientDashboard user={currentUser} onLogout={handleLogout} />
       return <Login onLoginSuccess={handleLoginSuccess} />
     }
     return (
@@ -157,6 +166,12 @@ export default function App() {
     )
   }
 
-  // Default Route: Login Page
+  // Default Route: Role Dashboard if logged in, otherwise Login Page
+  if (currentUser) {
+    if (currentUser.role === 'ROLE_ADMIN') return <AdminDashboard user={currentUser} onLogout={handleLogout} />
+    if (currentUser.role === 'ROLE_DOCTOR') return <DoctorDashboard user={currentUser} onLogout={handleLogout} />
+    if (currentUser.role === 'ROLE_PATIENT') return <PatientDashboard user={currentUser} onLogout={handleLogout} />
+  }
+
   return <Login onLoginSuccess={handleLoginSuccess} />
 }

@@ -54,6 +54,11 @@ export default function AdminDashboard({ user, onLogout }) {
   const [provPassword, setProvPassword] = useState('')
   const [submittingProv, setSubmittingProv] = useState(false)
 
+  // Doctor registrations & approvals state
+  const [pendingDoctors, setPendingDoctors] = useState([])
+  const [loadingDoctors, setLoadingDoctors] = useState(false)
+  const [actionDoctorId, setActionDoctorId] = useState(null)
+
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random()
     setToasts((prev) => [...prev, { id, message, type }])
@@ -78,14 +83,30 @@ export default function AdminDashboard({ user, onLogout }) {
     [onLogout]
   )
 
+  const loadPendingDoctors = useCallback(async () => {
+    try {
+      setLoadingDoctors(true)
+      const res = await apiFetch('/api/auth/doctors/pending')
+      if (res.ok) {
+        const json = await res.json()
+        setPendingDoctors(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingDoctors(false)
+    }
+  }, [apiFetch])
+
   const loadAllData = useCallback(async () => {
     try {
       setLoading(true)
-      const [roomsRes, bedsRes, patientsRes, analyticsRes] = await Promise.all([
+      const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes] = await Promise.all([
         apiFetch('/api/rooms'),
         apiFetch('/api/beds'),
         apiFetch('/api/patients'),
         apiFetch('/api/analytics/summary'),
+        apiFetch('/api/auth/doctors/pending'),
       ])
 
       if (roomsRes.ok && bedsRes.ok && patientsRes.ok) {
@@ -100,6 +121,11 @@ export default function AdminDashboard({ user, onLogout }) {
         if (analyticsRes.ok) {
           const aJson = await analyticsRes.json()
           setAnalyticsData(aJson.data)
+        }
+
+        if (doctorsRes && doctorsRes.ok) {
+          const dJson = await doctorsRes.json()
+          setPendingDoctors(dJson.data || [])
         }
       } else {
         showToast('Failed to load some hospital data', 'error')
@@ -116,11 +142,12 @@ export default function AdminDashboard({ user, onLogout }) {
 
     const initLoad = async () => {
       try {
-        const [roomsRes, bedsRes, patientsRes, analyticsRes] = await Promise.all([
+        const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes] = await Promise.all([
           apiFetch('/api/rooms'),
           apiFetch('/api/beds'),
           apiFetch('/api/patients'),
           apiFetch('/api/analytics/summary'),
+          apiFetch('/api/auth/doctors/pending'),
         ])
 
         if (ignore) return
@@ -137,6 +164,11 @@ export default function AdminDashboard({ user, onLogout }) {
           if (analyticsRes.ok) {
             const aJson = await analyticsRes.json()
             setAnalyticsData(aJson.data)
+          }
+
+          if (doctorsRes && doctorsRes.ok) {
+            const dJson = await doctorsRes.json()
+            setPendingDoctors(dJson.data || [])
           }
         } else {
           showToast('Failed to load some hospital data', 'error')
@@ -422,6 +454,46 @@ export default function AdminDashboard({ user, onLogout }) {
     showToast('Recommended bed selected in Admission form!', 'info')
   }
 
+  const handleApproveDoctor = async (doctorId, doctorName) => {
+    try {
+      setActionDoctorId(doctorId)
+      const res = await apiFetch(`/api/auth/doctors/${doctorId}/approve`, {
+        method: 'PATCH',
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast(`Doctor account for '${doctorName || 'Doctor'}' approved and activated successfully.`, 'success')
+        loadPendingDoctors()
+      } else {
+        showToast(data.message || 'Failed to approve doctor', 'error')
+      }
+    } catch (err) {
+      showToast(err.message || 'Error communicating with server', 'error')
+    } finally {
+      setActionDoctorId(null)
+    }
+  }
+
+  const handleRejectDoctor = async (doctorId, doctorName) => {
+    try {
+      setActionDoctorId(doctorId)
+      const res = await apiFetch(`/api/auth/doctors/${doctorId}/reject`, {
+        method: 'PATCH',
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast(`Doctor registration for '${doctorName || 'Doctor'}' has been rejected.`, 'info')
+        loadPendingDoctors()
+      } else {
+        showToast(data.message || 'Failed to reject doctor', 'error')
+      }
+    } catch (err) {
+      showToast(err.message || 'Error communicating with server', 'error')
+    } finally {
+      setActionDoctorId(null)
+    }
+  }
+
   const handleLogoutClick = async () => {
     try {
       await fetch('/api/auth/logout', {
@@ -463,6 +535,10 @@ export default function AdminDashboard({ user, onLogout }) {
     analytics: {
       title: 'Hospital Bed Utilization & Analytics',
       desc: 'Real-time occupancy rates, ward-level utilization, and length-of-stay metrics',
+    },
+    doctors: {
+      title: 'Doctor Registrations & Credentials Review',
+      desc: 'Verify medical registrations and approve or reject doctor portal access',
     },
   }
 
@@ -508,6 +584,27 @@ export default function AdminDashboard({ user, onLogout }) {
             onClick={() => setActiveTab('analytics')}
           >
             <span>📈</span> Utilization & Analytics
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'doctors' ? 'active' : ''}`}
+            onClick={() => setActiveTab('doctors')}
+          >
+            <span>👨‍⚕️</span> Doctor Approvals
+            {pendingDoctors.length > 0 && (
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  backgroundColor: '#dc2626',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '9999px',
+                }}
+              >
+                {pendingDoctors.length}
+              </span>
+            )}
           </button>
         </nav>
 
@@ -1472,6 +1569,155 @@ export default function AdminDashboard({ user, onLogout }) {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </section>
+        )}
+
+        {/* Tab 6: Doctor Registrations & Approvals */}
+        {activeTab === 'doctors' && (
+          <section>
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  marginBottom: '1rem',
+                  paddingBottom: '0.75rem',
+                  borderBottom: '1px solid var(--border-color)',
+                }}
+              >
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', color: 'var(--text-primary)' }}>
+                    Pending Doctor Registration Requests
+                  </h3>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                    Review submitted credentials, specialization, and official medical registration numbers.
+                  </p>
+                </div>
+                <button
+                  className="btn btn-secondary"
+                  onClick={loadPendingDoctors}
+                  disabled={loadingDoctors}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                >
+                  <span>🔄</span> {loadingDoctors ? 'Refreshing...' : 'Refresh Requests'}
+                </button>
+              </div>
+
+              {pendingDoctors.length === 0 ? (
+                <div
+                  style={{
+                    textAlign: 'center',
+                    padding: '3rem 1.5rem',
+                    color: 'var(--text-secondary)',
+                    backgroundColor: '#f8fafc',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1px dashed #cbd5e1',
+                  }}
+                >
+                  <div style={{ fontSize: '2.5rem', marginBottom: '0.75rem' }}>✅</div>
+                  <h4 style={{ margin: '0 0 0.5rem 0', color: 'var(--text-primary)', fontSize: '1.1rem' }}>
+                    No Pending Doctor Registrations
+                  </h4>
+                  <p style={{ margin: 0, fontSize: '0.9rem', maxWidth: '480px', marginInline: 'auto' }}>
+                    All doctor registration applications have been reviewed. When new doctors register on the portal, their credentials will appear here for administrative verification.
+                  </p>
+                </div>
+              ) : (
+                <div className="table-responsive">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Doctor Name</th>
+                        <th>Username & Contact</th>
+                        <th>Specialization</th>
+                        <th>Qualifications</th>
+                        <th>Medical Reg. No.</th>
+                        <th>Applied On</th>
+                        <th style={{ textAlign: 'center' }}>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pendingDoctors.map((doc) => (
+                        <tr key={doc.id}>
+                          <td>
+                            <strong>Dr. {doc.fullName}</strong>
+                          </td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>@{doc.username}</div>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              {doc.email || 'No email provided'}
+                            </div>
+                          </td>
+                          <td>
+                            <span
+                              style={{
+                                display: 'inline-block',
+                                padding: '0.2rem 0.6rem',
+                                borderRadius: '9999px',
+                                fontSize: '0.75rem',
+                                fontWeight: '600',
+                                backgroundColor: '#e0f2fe',
+                                color: '#0369a1',
+                              }}
+                            >
+                              {doc.specialization || 'General'}
+                            </span>
+                          </td>
+                          <td>{doc.qualifications || 'N/A'}</td>
+                          <td>
+                            <code
+                              style={{
+                                backgroundColor: '#f1f5f9',
+                                padding: '0.2rem 0.4rem',
+                                borderRadius: '4px',
+                                fontSize: '0.85rem',
+                                color: '#0f172a',
+                              }}
+                            >
+                              {doc.medicalRegistrationNumber || 'N/A'}
+                            </code>
+                          </td>
+                          <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                            {doc.createdAt ? new Date(doc.createdAt).toLocaleDateString() : 'Recent'}
+                          </td>
+                          <td>
+                            <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+                              <button
+                                className="btn btn-primary"
+                                style={{
+                                  backgroundColor: '#16a34a',
+                                  borderColor: '#16a34a',
+                                  padding: '0.4rem 0.8rem',
+                                  fontSize: '0.85rem',
+                                }}
+                                disabled={actionDoctorId === doc.id}
+                                onClick={() => handleApproveDoctor(doc.id, doc.fullName)}
+                              >
+                                {actionDoctorId === doc.id ? 'Processing...' : '✓ Approve'}
+                              </button>
+                              <button
+                                className="btn btn-danger"
+                                style={{
+                                  backgroundColor: '#dc2626',
+                                  borderColor: '#dc2626',
+                                  padding: '0.4rem 0.8rem',
+                                  fontSize: '0.85rem',
+                                }}
+                                disabled={actionDoctorId === doc.id}
+                                onClick={() => handleRejectDoctor(doc.id, doc.fullName)}
+                              >
+                                {actionDoctorId === doc.id ? 'Processing...' : '✕ Reject'}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </section>
         )}

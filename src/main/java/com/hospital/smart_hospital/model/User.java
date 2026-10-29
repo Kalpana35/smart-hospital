@@ -34,6 +34,22 @@ public class User {
     @Column(name = "enabled", nullable = false)
     private boolean enabled = true;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "approval_status", length = 30)
+    private DoctorApprovalStatus approvalStatus = DoctorApprovalStatus.APPROVED;
+
+    @Column(name = "email", length = 150)
+    private String email;
+
+    @Column(name = "specialization", length = 100)
+    private String specialization;
+
+    @Column(name = "qualifications", length = 200)
+    private String qualifications;
+
+    @Column(name = "medical_registration_number", length = 100)
+    private String medicalRegistrationNumber;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -46,6 +62,7 @@ public class User {
         this.fullName = fullName;
         this.role = role;
         this.enabled = true;
+        this.approvalStatus = DoctorApprovalStatus.APPROVED;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -95,6 +112,46 @@ public class User {
 
     public void setEnabled(boolean enabled) {
         this.enabled = enabled;
+    }
+
+    public DoctorApprovalStatus getApprovalStatus() {
+        return approvalStatus != null ? approvalStatus : DoctorApprovalStatus.APPROVED;
+    }
+
+    public void setApprovalStatus(DoctorApprovalStatus approvalStatus) {
+        this.approvalStatus = approvalStatus;
+    }
+
+    public String getEmail() {
+        return email;
+    }
+
+    public void setEmail(String email) {
+        this.email = email;
+    }
+
+    public String getSpecialization() {
+        return specialization;
+    }
+
+    public void setSpecialization(String specialization) {
+        this.specialization = specialization;
+    }
+
+    public String getQualifications() {
+        return qualifications;
+    }
+
+    public void setQualifications(String qualifications) {
+        this.qualifications = qualifications;
+    }
+
+    public String getMedicalRegistrationNumber() {
+        return medicalRegistrationNumber;
+    }
+
+    public void setMedicalRegistrationNumber(String medicalRegistrationNumber) {
+        this.medicalRegistrationNumber = medicalRegistrationNumber;
     }
 
     public LocalDateTime getCreatedAt() {

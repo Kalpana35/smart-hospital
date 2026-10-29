@@ -11,7 +11,7 @@
   background: #ffffff;
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 440px;
+  max-width: 480px;
   padding: 2.5rem 2rem;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -221,8 +221,8 @@
 
 .auth-tab-btn {
   flex: 1;
-  padding: 0.6rem 0.75rem;
-  font-size: 0.85rem;
+  padding: 0.6rem 0.5rem;
+  font-size: 0.82rem;
   font-weight: 600;
   border: none;
   background: transparent;
@@ -230,6 +230,8 @@
   border-radius: calc(var(--radius-md) - 2px);
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  text-align: center;
 }
 
 .auth-tab-btn.active {

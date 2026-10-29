@@ -40,6 +40,8 @@ public class SecurityConfig {
                         // 2. Auth endpoints
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register-patient").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register-doctor").permitAll()
+                        .requestMatchers("/api/auth/doctors/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 

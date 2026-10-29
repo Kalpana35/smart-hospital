@@ -2,7 +2,7 @@ import { useState } from 'react'
 import './Login.css'
 
 export default function Login({ onLoginSuccess }) {
-  const [activeTab, setActiveTab] = useState('login') // 'login' | 'register'
+  const [activeTab, setActiveTab] = useState('login') // 'login' | 'register' | 'doctor-register'
 
   // Login form state
   const [username, setUsername] = useState('')
@@ -13,7 +13,7 @@ export default function Login({ onLoginSuccess }) {
   const [successMsg, setSuccessMsg] = useState('')
   const [fieldErrors, setFieldErrors] = useState({})
 
-  // Self-registration form state
+  // Patient self-registration form state
   const [regPatientCode, setRegPatientCode] = useState('')
   const [regFullName, setRegFullName] = useState('')
   const [regUsername, setRegUsername] = useState('')
@@ -21,6 +21,18 @@ export default function Login({ onLoginSuccess }) {
   const [regConfirmPassword, setRegConfirmPassword] = useState('')
   const [showRegPassword, setShowRegPassword] = useState(false)
   const [regLoading, setRegLoading] = useState(false)
+
+  // Doctor registration form state
+  const [docFullName, setDocFullName] = useState('')
+  const [docUsername, setDocUsername] = useState('')
+  const [docEmail, setDocEmail] = useState('')
+  const [docSpecialization, setDocSpecialization] = useState('')
+  const [docQualifications, setDocQualifications] = useState('')
+  const [docMedRegNo, setDocMedRegNo] = useState('')
+  const [docPassword, setDocPassword] = useState('')
+  const [docConfirmPassword, setDocConfirmPassword] = useState('')
+  const [showDocPassword, setShowDocPassword] = useState(false)
+  const [docLoading, setDocLoading] = useState(false)
 
   const validateLogin = () => {
     const errs = {}
@@ -93,7 +105,7 @@ export default function Login({ onLoginSuccess }) {
     }
   }
 
-  const handleRegisterSubmit = async (e) => {
+  const handlePatientRegisterSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setSuccessMsg('')
@@ -152,6 +164,85 @@ export default function Login({ onLoginSuccess }) {
     }
   }
 
+  const handleDoctorRegisterSubmit = async (e) => {
+    e.preventDefault()
+    setError('')
+    setSuccessMsg('')
+
+    if (!docFullName.trim()) {
+      setError('Doctor Full Name is required.')
+      return
+    }
+    if (!docUsername.trim()) {
+      setError('Desired Username is required.')
+      return
+    }
+    if (!docEmail.trim() || !docEmail.includes('@')) {
+      setError('A valid Email address is required.')
+      return
+    }
+    if (!docSpecialization.trim()) {
+      setError('Medical Specialization is required.')
+      return
+    }
+    if (!docQualifications.trim()) {
+      setError('Qualifications (e.g., MBBS, MD) are required.')
+      return
+    }
+    if (!docMedRegNo.trim()) {
+      setError('Medical Registration / License Number is required.')
+      return
+    }
+    if (docPassword.length < 6) {
+      setError('Password must be at least 6 characters.')
+      return
+    }
+    if (docPassword !== docConfirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    setDocLoading(true)
+    try {
+      const res = await fetch('/api/auth/register-doctor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: docFullName.trim(),
+          username: docUsername.trim(),
+          email: docEmail.trim(),
+          specialization: docSpecialization.trim(),
+          qualifications: docQualifications.trim(),
+          medicalRegistrationNumber: docMedRegNo.trim(),
+          password: docPassword,
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok && data.success) {
+        setSuccessMsg(
+          'Doctor registration submitted successfully! Your account is pending administrator review and approval. Once approved, you can sign in with your credentials.'
+        )
+        setUsername(docUsername.trim())
+        setActiveTab('login')
+        setDocFullName('')
+        setDocUsername('')
+        setDocEmail('')
+        setDocSpecialization('')
+        setDocQualifications('')
+        setDocMedRegNo('')
+        setDocPassword('')
+        setDocConfirmPassword('')
+      } else {
+        setError(data.message || 'Failed to submit doctor registration.')
+      }
+    } catch {
+      setError('Unable to reach the hospital server. Please verify your connection.')
+    } finally {
+      setDocLoading(false)
+    }
+  }
+
   return (
     <div className="login-container">
       <div className="login-card">
@@ -166,7 +257,7 @@ export default function Login({ onLoginSuccess }) {
           </div>
         </div>
 
-        {/* Tab Switch */}
+        {/* 3-Tab Switch */}
         <div className="auth-tab-switch">
           <button
             type="button"
@@ -187,7 +278,18 @@ export default function Login({ onLoginSuccess }) {
               setSuccessMsg('')
             }}
           >
-            Patient Self-Registration
+            Patient Sign-Up
+          </button>
+          <button
+            type="button"
+            className={`auth-tab-btn ${activeTab === 'doctor-register' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('doctor-register')
+              setError('')
+              setSuccessMsg('')
+            }}
+          >
+            Doctor Sign-Up
           </button>
         </div>
 
@@ -205,7 +307,7 @@ export default function Login({ onLoginSuccess }) {
           </div>
         )}
 
-        {activeTab === 'login' ? (
+        {activeTab === 'login' && (
           <form className="login-form" onSubmit={handleLoginSubmit} noValidate>
             <div className="form-group">
               <label htmlFor="username">Username</label>
@@ -277,8 +379,10 @@ export default function Login({ onLoginSuccess }) {
               )}
             </button>
           </form>
-        ) : (
-          <form className="login-form" onSubmit={handleRegisterSubmit} noValidate>
+        )}
+
+        {activeTab === 'register' && (
+          <form className="login-form" onSubmit={handlePatientRegisterSubmit} noValidate>
             <div className="form-group">
               <label htmlFor="regPatientCode">Hospital Patient Code / MRN *</label>
               <div className="input-wrapper">
@@ -382,6 +486,179 @@ export default function Login({ onLoginSuccess }) {
                 'Register & Link Account'
               )}
             </button>
+          </form>
+        )}
+
+        {activeTab === 'doctor-register' && (
+          <form className="login-form" onSubmit={handleDoctorRegisterSubmit} noValidate>
+            <div className="form-group">
+              <label htmlFor="docFullName">Doctor Full Name *</label>
+              <div className="input-wrapper">
+                <input
+                  id="docFullName"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Dr. Jennifer Adams"
+                  value={docFullName}
+                  onChange={(e) => setDocFullName(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="docUsername">Desired Username *</label>
+              <div className="input-wrapper">
+                <input
+                  id="docUsername"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. dr.jennifer"
+                  value={docUsername}
+                  onChange={(e) => setDocUsername(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="docEmail">Official Email *</label>
+              <div className="input-wrapper">
+                <input
+                  id="docEmail"
+                  type="email"
+                  className="form-input"
+                  placeholder="e.g. jennifer.adams@hospital.com"
+                  value={docEmail}
+                  onChange={(e) => setDocEmail(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+              </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+              <div className="form-group">
+                <label htmlFor="docSpecialization">Specialization *</label>
+                <div className="input-wrapper">
+                  <input
+                    id="docSpecialization"
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Cardiology"
+                    value={docSpecialization}
+                    onChange={(e) => setDocSpecialization(e.target.value)}
+                    disabled={docLoading}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="docQualifications">Qualifications *</label>
+                <div className="input-wrapper">
+                  <input
+                    id="docQualifications"
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. MBBS, MD"
+                    value={docQualifications}
+                    onChange={(e) => setDocQualifications(e.target.value)}
+                    disabled={docLoading}
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="docMedRegNo">Medical Registration / License No. *</label>
+              <div className="input-wrapper">
+                <input
+                  id="docMedRegNo"
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. MED-REG-2026-908"
+                  value={docMedRegNo}
+                  onChange={(e) => setDocMedRegNo(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+              </div>
+              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                Official medical council registration number for administrative verification.
+              </span>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="docPassword">Password * (min 6 characters)</label>
+              <div className="input-wrapper">
+                <input
+                  id="docPassword"
+                  type={showDocPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Create password"
+                  value={docPassword}
+                  onChange={(e) => setDocPassword(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+                <button
+                  type="button"
+                  className="toggle-password-btn"
+                  onClick={() => setShowDocPassword((prev) => !prev)}
+                  title={showDocPassword ? 'Hide password' : 'Show password'}
+                  aria-label={showDocPassword ? 'Hide password' : 'Show password'}
+                  tabIndex={-1}
+                >
+                  {showDocPassword ? '👁️' : '🔒'}
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="docConfirmPassword">Confirm Password *</label>
+              <div className="input-wrapper">
+                <input
+                  id="docConfirmPassword"
+                  type={showDocPassword ? 'text' : 'password'}
+                  className="form-input"
+                  placeholder="Re-enter password"
+                  value={docConfirmPassword}
+                  onChange={(e) => setDocConfirmPassword(e.target.value)}
+                  disabled={docLoading}
+                  required
+                />
+              </div>
+            </div>
+
+            <button type="submit" className="btn-submit" disabled={docLoading}>
+              {docLoading ? (
+                <>
+                  <span className="spinner"></span>
+                  <span>Submitting Credentials...</span>
+                </>
+              ) : (
+                'Submit Doctor Registration'
+              )}
+            </button>
+
+            <div
+              style={{
+                fontSize: '0.75rem',
+                color: 'var(--text-secondary)',
+                backgroundColor: '#f8fafc',
+                padding: '0.6rem 0.8rem',
+                borderRadius: 'var(--radius-md)',
+                border: '1px solid #e2e8f0',
+                marginTop: '0.25rem',
+                lineHeight: 1.4,
+              }}
+            >
+              🔒 <strong>Verification Policy:</strong> Doctor accounts remain pending until reviewed and approved by an Administrator.
+            </div>
           </form>
         )}
 

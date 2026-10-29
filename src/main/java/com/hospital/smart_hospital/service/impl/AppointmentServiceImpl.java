@@ -7,6 +7,7 @@ import com.hospital.smart_hospital.exception.BadRequestException;
 import com.hospital.smart_hospital.exception.ResourceNotFoundException;
 import com.hospital.smart_hospital.model.Appointment;
 import com.hospital.smart_hospital.model.AppointmentStatus;
+import com.hospital.smart_hospital.model.DoctorApprovalStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.User;
@@ -217,7 +218,7 @@ public class AppointmentServiceImpl implements AppointmentService {
     @Transactional(readOnly = true)
     public List<DoctorOptionDto> getAvailableDoctors() {
         return userRepository.findAll().stream()
-                .filter(u -> u.getRole() == Role.ROLE_DOCTOR && u.isEnabled())
+                .filter(u -> u.getRole() == Role.ROLE_DOCTOR && u.isEnabled() && u.getApprovalStatus() == DoctorApprovalStatus.APPROVED)
                 .map(u -> new DoctorOptionDto(u.getId(), u.getUsername(), u.getFullName()))
                 .toList();
     }

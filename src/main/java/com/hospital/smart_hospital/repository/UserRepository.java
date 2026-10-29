@@ -1,5 +1,6 @@
 package com.hospital.smart_hospital.repository;
 
+import com.hospital.smart_hospital.model.DoctorApprovalStatus;
 import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.User;
 import java.util.List;
@@ -14,6 +15,16 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByUsernameIgnoreCase(String username);
 
+    Optional<User> findByEmailIgnoreCase(String email);
+
+    boolean existsByEmailIgnoreCase(String email);
+
+    Optional<User> findByMedicalRegistrationNumberIgnoreCase(String medicalRegistrationNumber);
+
+    boolean existsByMedicalRegistrationNumberIgnoreCase(String medicalRegistrationNumber);
+
     List<User> findByRole(Role role);
+
+    List<User> findByRoleAndApprovalStatus(Role role, DoctorApprovalStatus approvalStatus);
 }
 
