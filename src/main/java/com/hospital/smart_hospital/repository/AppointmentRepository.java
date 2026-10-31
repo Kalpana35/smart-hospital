@@ -20,6 +20,8 @@ public interface AppointmentRepository extends JpaRepository<Appointment, Long> 
 
     List<Appointment> findAllByOrderByAppointmentDateTimeDesc();
 
+    long countByStatus(AppointmentStatus status);
+
     boolean existsByDoctorIdAndStatusAndAppointmentDateTimeBetween(
             Long doctorId,
             AppointmentStatus status,

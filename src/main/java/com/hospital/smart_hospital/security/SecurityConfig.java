@@ -40,8 +40,11 @@ public class SecurityConfig {
                         // 2. Auth endpoints
                         .requestMatchers("/api/auth/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register-patient").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/auth/register-doctor").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register-doctor").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/auth/change-password").authenticated()
                         .requestMatchers("/api/auth/doctors/**").hasRole("ADMIN")
+                        .requestMatchers("/api/auth/staff/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.PATCH, "/api/auth/users/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 
@@ -51,27 +54,30 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
 
-                        // 4. Room & Bed read operations (ADMIN and DOCTOR)
-                        .requestMatchers(HttpMethod.GET, "/api/rooms/**", "/api/beds/**").hasAnyRole("ADMIN", "DOCTOR")
+                        // 4. Room & Bed read operations (ADMIN, DOCTOR, RECEPTIONIST)
+                        .requestMatchers(HttpMethod.GET, "/api/rooms/**", "/api/beds/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
-                        // 5. Bed allocation recommendations (ADMIN and DOCTOR)
-                        .requestMatchers("/api/allocations/**").hasAnyRole("ADMIN", "DOCTOR")
+                        // 5. Bed allocation recommendations and history (ADMIN, DOCTOR, RECEPTIONIST)
+                        .requestMatchers("/api/allocations/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
                         // 6. Patient admissions, discharges, and portal account provisioning
-                        .requestMatchers(HttpMethod.POST, "/api/patients/*/create-account").hasRole("ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/patients/admit", "/api/patients/*/discharge").hasAnyRole("ADMIN", "DOCTOR")
+                        .requestMatchers(HttpMethod.POST, "/api/patients/*/create-account").hasAnyRole("ADMIN", "RECEPTIONIST")
+                        .requestMatchers(HttpMethod.POST, "/api/patients/admit", "/api/patients/*/discharge").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
                         // 7. Patient record querying
                         .requestMatchers(HttpMethod.GET, "/api/patients/me").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/patients").hasAnyRole("ADMIN", "DOCTOR")
-                        .requestMatchers(HttpMethod.GET, "/api/patients/by-code/**").hasAnyRole("ADMIN", "DOCTOR")
-                        .requestMatchers(HttpMethod.GET, "/api/patients/*").hasAnyRole("ADMIN", "DOCTOR", "PATIENT")
+                        .requestMatchers(HttpMethod.GET, "/api/patients").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
+                        .requestMatchers(HttpMethod.GET, "/api/patients/by-code/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
+                        .requestMatchers(HttpMethod.GET, "/api/patients/*").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST", "PATIENT")
 
-                        // 8. Analytics endpoints (ADMIN and DOCTOR)
+                        // 8. Analytics endpoints (ADMIN and DOCTOR only - strictly forbidden for RECEPTIONIST and PATIENT)
                         .requestMatchers("/api/analytics/**").hasAnyRole("ADMIN", "DOCTOR")
 
-                        // 9. Appointments endpoints (Authenticated users: Patient, Doctor, Admin)
+                        // 9. Appointments endpoints (Authenticated users)
                         .requestMatchers("/api/appointments/**").authenticated()
+
+                        // 10. Consultations endpoints (Authenticated users)
+                        .requestMatchers("/api/consultations/**").authenticated()
 
                         // 10. Admin dashboard UI (ADMIN only)
                         .requestMatchers("/", "/index.html").hasRole("ADMIN")

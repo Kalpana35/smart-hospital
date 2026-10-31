@@ -1,8 +1,9 @@
 import { useState } from 'react'
+import { validateStrongPassword } from '../utils/passwordPolicy'
 import './Login.css'
 
 export default function Login({ onLoginSuccess }) {
-  const [activeTab, setActiveTab] = useState('login') // 'login' | 'register' | 'doctor-register'
+  const [view, setView] = useState('signin') // 'signin' | 'patient-signup'
 
   // Login form state
   const [username, setUsername] = useState('')
@@ -20,19 +21,17 @@ export default function Login({ onLoginSuccess }) {
   const [regPassword, setRegPassword] = useState('')
   const [regConfirmPassword, setRegConfirmPassword] = useState('')
   const [showRegPassword, setShowRegPassword] = useState(false)
+  const [showRegConfirmPassword, setShowRegConfirmPassword] = useState(false)
   const [regLoading, setRegLoading] = useState(false)
 
-  // Doctor registration form state
-  const [docFullName, setDocFullName] = useState('')
-  const [docUsername, setDocUsername] = useState('')
-  const [docEmail, setDocEmail] = useState('')
-  const [docSpecialization, setDocSpecialization] = useState('')
-  const [docQualifications, setDocQualifications] = useState('')
-  const [docMedRegNo, setDocMedRegNo] = useState('')
-  const [docPassword, setDocPassword] = useState('')
-  const [docConfirmPassword, setDocConfirmPassword] = useState('')
-  const [showDocPassword, setShowDocPassword] = useState(false)
-  const [docLoading, setDocLoading] = useState(false)
+  // Real-time password criteria for registration
+  const pwdReqs = {
+    length: regPassword.length >= 6,
+    uppercase: /[A-Z]/.test(regPassword),
+    lowercase: /[a-z]/.test(regPassword),
+    number: /[0-9]/.test(regPassword),
+    special: /[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(regPassword),
+  }
 
   const validateLogin = () => {
     const errs = {}
@@ -74,7 +73,7 @@ export default function Login({ onLoginSuccess }) {
       const result = await response.json()
 
       if (response.ok && result.success) {
-        setSuccessMsg('Authentication successful! Routing to dashboard...')
+        setSuccessMsg('Authentication successful! Routing to your dashboard...')
 
         const meResponse = await fetch('/api/auth/me', {
           method: 'GET',
@@ -89,7 +88,7 @@ export default function Login({ onLoginSuccess }) {
             if (onLoginSuccess) {
               onLoginSuccess(userProfile)
             }
-          }, 400)
+          }, 350)
         } else {
           if (onLoginSuccess) {
             onLoginSuccess(result.data)
@@ -122,10 +121,13 @@ export default function Login({ onLoginSuccess }) {
       setError('Desired Username is required.')
       return
     }
-    if (regPassword.length < 6) {
-      setError('Password must be at least 6 characters.')
+
+    const pwdErrors = validateStrongPassword(regPassword)
+    if (pwdErrors.length > 0) {
+      setError(`Password does not meet requirements: ${pwdErrors.join(', ')} (e.g., Reception@123)`)
       return
     }
+
     if (regPassword !== regConfirmPassword) {
       setError('Passwords do not match.')
       return
@@ -148,7 +150,7 @@ export default function Login({ onLoginSuccess }) {
       if (res.ok && data.success) {
         setSuccessMsg('Registration successful! Account linked to patient record. Please sign in.')
         setUsername(regUsername.trim())
-        setActiveTab('login')
+        setView('signin')
         setRegPatientCode('')
         setRegFullName('')
         setRegUsername('')
@@ -164,507 +166,346 @@ export default function Login({ onLoginSuccess }) {
     }
   }
 
-  const handleDoctorRegisterSubmit = async (e) => {
-    e.preventDefault()
-    setError('')
-    setSuccessMsg('')
-
-    if (!docFullName.trim()) {
-      setError('Doctor Full Name is required.')
-      return
-    }
-    if (!docUsername.trim()) {
-      setError('Desired Username is required.')
-      return
-    }
-    if (!docEmail.trim() || !docEmail.includes('@')) {
-      setError('A valid Email address is required.')
-      return
-    }
-    if (!docSpecialization.trim()) {
-      setError('Medical Specialization is required.')
-      return
-    }
-    if (!docQualifications.trim()) {
-      setError('Qualifications (e.g., MBBS, MD) are required.')
-      return
-    }
-    if (!docMedRegNo.trim()) {
-      setError('Medical Registration / License Number is required.')
-      return
-    }
-    if (docPassword.length < 6) {
-      setError('Password must be at least 6 characters.')
-      return
-    }
-    if (docPassword !== docConfirmPassword) {
-      setError('Passwords do not match.')
-      return
-    }
-
-    setDocLoading(true)
-    try {
-      const res = await fetch('/api/auth/register-doctor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fullName: docFullName.trim(),
-          username: docUsername.trim(),
-          email: docEmail.trim(),
-          specialization: docSpecialization.trim(),
-          qualifications: docQualifications.trim(),
-          medicalRegistrationNumber: docMedRegNo.trim(),
-          password: docPassword,
-        }),
-      })
-
-      const data = await res.json()
-      if (res.ok && data.success) {
-        setSuccessMsg(
-          'Doctor registration submitted successfully! Your account is pending administrator review and approval. Once approved, you can sign in with your credentials.'
-        )
-        setUsername(docUsername.trim())
-        setActiveTab('login')
-        setDocFullName('')
-        setDocUsername('')
-        setDocEmail('')
-        setDocSpecialization('')
-        setDocQualifications('')
-        setDocMedRegNo('')
-        setDocPassword('')
-        setDocConfirmPassword('')
-      } else {
-        setError(data.message || 'Failed to submit doctor registration.')
-      }
-    } catch {
-      setError('Unable to reach the hospital server. Please verify your connection.')
-    } finally {
-      setDocLoading(false)
-    }
-  }
-
   return (
-    <div className="login-container">
+    <div className="login-page">
       <div className="login-card">
-        <div className="login-header">
-          <div className="login-logo">🏥</div>
-          <h1>SmartHospital</h1>
-          <p>Bed Management & Allocation Optimization</p>
-          <div className="role-chips">
-            <span className="role-chip">Admin</span>
-            <span className="role-chip">Doctor</span>
-            <span className="role-chip">Patient</span>
+        {/* Brand Header */}
+        <div className="brand-header">
+          <div className="hospital-logo-badge">
+            <svg
+              className="hospital-icon-svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="4" />
+              <line x1="12" y1="8" x2="12" y2="16" />
+              <line x1="8" y1="12" x2="16" y2="12" />
+            </svg>
           </div>
+          <h1 className="brand-title">SmartHospital</h1>
+          <p className="brand-tagline">Bed Management & Allocation Optimization</p>
         </div>
 
-        {/* 3-Tab Switch */}
-        <div className="auth-tab-switch">
-          <button
-            type="button"
-            className={`auth-tab-btn ${activeTab === 'login' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('login')
-              setError('')
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            className={`auth-tab-btn ${activeTab === 'register' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('register')
-              setError('')
-              setSuccessMsg('')
-            }}
-          >
-            Patient Sign-Up
-          </button>
-          <button
-            type="button"
-            className={`auth-tab-btn ${activeTab === 'doctor-register' ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab('doctor-register')
-              setError('')
-              setSuccessMsg('')
-            }}
-          >
-            Doctor Sign-Up
-          </button>
-        </div>
-
+        {/* View Switcher Alert / Notice */}
         {error && (
           <div className="login-alert error" role="alert">
-            <span>⚠️</span>
-            <span>{error}</span>
+            <span className="alert-icon">⚠️</span>
+            <div className="alert-text">{error}</div>
           </div>
         )}
 
         {successMsg && (
           <div className="login-alert info" role="status">
-            <span>✅</span>
-            <span>{successMsg}</span>
+            <span className="alert-icon">✅</span>
+            <div className="alert-text">{successMsg}</div>
           </div>
         )}
 
-        {activeTab === 'login' && (
-          <form className="login-form" onSubmit={handleLoginSubmit} noValidate>
-            <div className="form-group">
-              <label htmlFor="username">Username</label>
-              <div className="input-wrapper">
-                <input
-                  id="username"
-                  type="text"
-                  className={`form-input ${fieldErrors.username ? 'has-error' : ''}`}
-                  placeholder="Enter username"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value)
-                    if (fieldErrors.username) {
-                      setFieldErrors((prev) => ({ ...prev, username: '' }))
-                    }
-                  }}
-                  disabled={loading}
-                  autoFocus
-                  autoComplete="username"
-                />
-              </div>
-              {fieldErrors.username && (
-                <span className="field-error">{fieldErrors.username}</span>
-              )}
+        {view === 'signin' ? (
+          /* Sign In View */
+          <div className="auth-view">
+            <div className="form-header">
+              <h2 className="view-heading">Welcome Back</h2>
+              <p className="view-subtitle">Sign in to your hospital account.</p>
             </div>
 
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <div className="input-wrapper">
-                <input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  className={`form-input ${fieldErrors.password ? 'has-error' : ''}`}
-                  placeholder="Enter password"
-                  value={password}
-                  onChange={(e) => {
-                    setPassword(e.target.value)
-                    if (fieldErrors.password) {
-                      setFieldErrors((prev) => ({ ...prev, password: '' }))
-                    }
-                  }}
-                  disabled={loading}
-                  autoComplete="current-password"
-                />
-                <button
-                  type="button"
-                  className="toggle-password-btn"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
-                >
-                  {showPassword ? '👁️' : '🔒'}
-                </button>
-              </div>
-              {fieldErrors.password && (
-                <span className="field-error">{fieldErrors.password}</span>
-              )}
-            </div>
-
-            <button type="submit" className="btn-submit" disabled={loading}>
-              {loading ? (
-                <>
-                  <span className="spinner"></span>
-                  <span>Signing In...</span>
-                </>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
-        )}
-
-        {activeTab === 'register' && (
-          <form className="login-form" onSubmit={handlePatientRegisterSubmit} noValidate>
-            <div className="form-group">
-              <label htmlFor="regPatientCode">Hospital Patient Code / MRN *</label>
-              <div className="input-wrapper">
-                <input
-                  id="regPatientCode"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. DEMO-2026-003 or PAT-101"
-                  value={regPatientCode}
-                  onChange={(e) => setRegPatientCode(e.target.value)}
-                  disabled={regLoading}
-                  required
-                />
-              </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Your official patient code from your admission or intake slip.
-              </span>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="regFullName">Full Name *</label>
-              <div className="input-wrapper">
-                <input
-                  id="regFullName"
-                  type="text"
-                  className="form-input"
-                  placeholder="Must match official hospital record"
-                  value={regFullName}
-                  onChange={(e) => setRegFullName(e.target.value)}
-                  disabled={regLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="regUsername">Choose Username *</label>
-              <div className="input-wrapper">
-                <input
-                  id="regUsername"
-                  type="text"
-                  className="form-input"
-                  placeholder="Enter desired username"
-                  value={regUsername}
-                  onChange={(e) => setRegUsername(e.target.value)}
-                  disabled={regLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="regPassword">Password * (min 6 characters)</label>
-              <div className="input-wrapper">
-                <input
-                  id="regPassword"
-                  type={showRegPassword ? 'text' : 'password'}
-                  className="form-input"
-                  placeholder="Create password"
-                  value={regPassword}
-                  onChange={(e) => setRegPassword(e.target.value)}
-                  disabled={regLoading}
-                  required
-                />
-                <button
-                  type="button"
-                  className="toggle-password-btn"
-                  onClick={() => setShowRegPassword((prev) => !prev)}
-                  title={showRegPassword ? 'Hide password' : 'Show password'}
-                  aria-label={showRegPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
-                >
-                  {showRegPassword ? '👁️' : '🔒'}
-                </button>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="regConfirmPassword">Confirm Password *</label>
-              <div className="input-wrapper">
-                <input
-                  id="regConfirmPassword"
-                  type={showRegPassword ? 'text' : 'password'}
-                  className="form-input"
-                  placeholder="Re-enter password"
-                  value={regConfirmPassword}
-                  onChange={(e) => setRegConfirmPassword(e.target.value)}
-                  disabled={regLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <button type="submit" className="btn-submit" disabled={regLoading}>
-              {regLoading ? (
-                <>
-                  <span className="spinner"></span>
-                  <span>Verifying & Linking...</span>
-                </>
-              ) : (
-                'Register & Link Account'
-              )}
-            </button>
-          </form>
-        )}
-
-        {activeTab === 'doctor-register' && (
-          <form className="login-form" onSubmit={handleDoctorRegisterSubmit} noValidate>
-            <div className="form-group">
-              <label htmlFor="docFullName">Doctor Full Name *</label>
-              <div className="input-wrapper">
-                <input
-                  id="docFullName"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Dr. Jennifer Adams"
-                  value={docFullName}
-                  onChange={(e) => setDocFullName(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="docUsername">Desired Username *</label>
-              <div className="input-wrapper">
-                <input
-                  id="docUsername"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. dr.jennifer"
-                  value={docUsername}
-                  onChange={(e) => setDocUsername(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="docEmail">Official Email *</label>
-              <div className="input-wrapper">
-                <input
-                  id="docEmail"
-                  type="email"
-                  className="form-input"
-                  placeholder="e.g. jennifer.adams@hospital.com"
-                  value={docEmail}
-                  onChange={(e) => setDocEmail(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+            <form className="auth-form" onSubmit={handleLoginSubmit} noValidate>
               <div className="form-group">
-                <label htmlFor="docSpecialization">Specialization *</label>
-                <div className="input-wrapper">
+                <label htmlFor="username" className="form-label">Username</label>
+                <div className="input-field-wrapper">
                   <input
-                    id="docSpecialization"
+                    id="username"
+                    type="text"
+                    className={`form-input ${fieldErrors.username ? 'has-error' : ''}`}
+                    placeholder="Enter your username"
+                    value={username}
+                    onChange={(e) => {
+                      setUsername(e.target.value)
+                      if (fieldErrors.username) {
+                        setFieldErrors((prev) => ({ ...prev, username: '' }))
+                      }
+                    }}
+                    disabled={loading}
+                    autoFocus
+                    autoComplete="username"
+                  />
+                </div>
+                {fieldErrors.username && (
+                  <span className="field-error-text">{fieldErrors.username}</span>
+                )}
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="password" className="form-label">Password</label>
+                <div className="input-field-wrapper">
+                  <input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    className={`form-input ${fieldErrors.password ? 'has-error' : ''}`}
+                    placeholder="Enter your password"
+                    value={password}
+                    onChange={(e) => {
+                      setPassword(e.target.value)
+                      if (fieldErrors.password) {
+                        setFieldErrors((prev) => ({ ...prev, password: '' }))
+                      }
+                    }}
+                    disabled={loading}
+                    autoComplete="current-password"
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowPassword((prev) => !prev)}
+                    title={showPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showPassword ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {fieldErrors.password && (
+                  <span className="field-error-text">{fieldErrors.password}</span>
+                )}
+              </div>
+
+              <button type="submit" className="btn-primary-signin" disabled={loading}>
+                {loading ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    <span>Signing In...</span>
+                  </>
+                ) : (
+                  'Sign In'
+                )}
+              </button>
+            </form>
+
+            {/* Link to Patient Sign-Up */}
+            <div className="auth-footer-nav">
+              <span>Don't have an account? </span>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  setView('patient-signup')
+                  setError('')
+                  setSuccessMsg('')
+                }}
+              >
+                Patient Sign-Up
+              </button>
+            </div>
+
+            {/* Staff Accounts Provisioning Notice */}
+            <div className="staff-admin-notice">
+              <span className="staff-notice-icon">🔒</span>
+              <div className="staff-notice-text">
+                <strong>Hospital Staff:</strong> Doctor, Receptionist, and Administrator accounts are provisioned exclusively by hospital administrators. Doctors use the credentials provided by the Admin.
+              </div>
+            </div>
+          </div>
+        ) : (
+          /* Patient Sign-Up View */
+          <div className="auth-view">
+            <div className="form-header">
+              <h2 className="view-heading">Create Your Patient Account</h2>
+              <p className="view-subtitle">Link your existing hospital admission record or MRN.</p>
+            </div>
+
+            <form className="auth-form" onSubmit={handlePatientRegisterSubmit} noValidate>
+              <div className="form-group">
+                <label htmlFor="regPatientCode" className="form-label">Hospital Patient Code / MRN *</label>
+                <div className="input-field-wrapper">
+                  <input
+                    id="regPatientCode"
                     type="text"
                     className="form-input"
-                    placeholder="e.g. Cardiology"
-                    value={docSpecialization}
-                    onChange={(e) => setDocSpecialization(e.target.value)}
-                    disabled={docLoading}
+                    placeholder="e.g. DEMO-2026-003 or PAT-101"
+                    value={regPatientCode}
+                    onChange={(e) => setRegPatientCode(e.target.value)}
+                    disabled={regLoading}
+                    required
+                  />
+                </div>
+                <span className="field-help-text">
+                  Your official patient code from your admission or intake slip.
+                </span>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="regFullName" className="form-label">Full Name *</label>
+                <div className="input-field-wrapper">
+                  <input
+                    id="regFullName"
+                    type="text"
+                    className="form-input"
+                    placeholder="Must match official hospital record"
+                    value={regFullName}
+                    onChange={(e) => setRegFullName(e.target.value)}
+                    disabled={regLoading}
                     required
                   />
                 </div>
               </div>
 
               <div className="form-group">
-                <label htmlFor="docQualifications">Qualifications *</label>
-                <div className="input-wrapper">
+                <label htmlFor="regUsername" className="form-label">Choose Username *</label>
+                <div className="input-field-wrapper">
                   <input
-                    id="docQualifications"
+                    id="regUsername"
                     type="text"
                     className="form-input"
-                    placeholder="e.g. MBBS, MD"
-                    value={docQualifications}
-                    onChange={(e) => setDocQualifications(e.target.value)}
-                    disabled={docLoading}
+                    placeholder="Enter desired username"
+                    value={regUsername}
+                    onChange={(e) => setRegUsername(e.target.value)}
+                    disabled={regLoading}
                     required
                   />
                 </div>
               </div>
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="docMedRegNo">Medical Registration / License No. *</label>
-              <div className="input-wrapper">
-                <input
-                  id="docMedRegNo"
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. MED-REG-2026-908"
-                  value={docMedRegNo}
-                  onChange={(e) => setDocMedRegNo(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
+              <div className="form-group">
+                <label htmlFor="regPassword" className="form-label">Password * (Strong Password Policy)</label>
+                <div className="input-field-wrapper">
+                  <input
+                    id="regPassword"
+                    type={showRegPassword ? 'text' : 'password'}
+                    className="form-input"
+                    placeholder="Create a strong password"
+                    value={regPassword}
+                    onChange={(e) => setRegPassword(e.target.value)}
+                    disabled={regLoading}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowRegPassword((prev) => !prev)}
+                    title={showRegPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showRegPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showRegPassword ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
+
+                {/* Password Criteria Checklist */}
+                <div className="pwd-checklist">
+                  <div className={`pwd-criterion ${pwdReqs.length ? 'valid' : ''}`}>
+                    <span className="criterion-indicator">{pwdReqs.length ? '✓' : '•'}</span>
+                    <span>Min 6 characters</span>
+                  </div>
+                  <div className={`pwd-criterion ${pwdReqs.uppercase ? 'valid' : ''}`}>
+                    <span className="criterion-indicator">{pwdReqs.uppercase ? '✓' : '•'}</span>
+                    <span>Uppercase (A-Z)</span>
+                  </div>
+                  <div className={`pwd-criterion ${pwdReqs.lowercase ? 'valid' : ''}`}>
+                    <span className="criterion-indicator">{pwdReqs.lowercase ? '✓' : '•'}</span>
+                    <span>Lowercase (a-z)</span>
+                  </div>
+                  <div className={`pwd-criterion ${pwdReqs.number ? 'valid' : ''}`}>
+                    <span className="criterion-indicator">{pwdReqs.number ? '✓' : '•'}</span>
+                    <span>Number (0-9)</span>
+                  </div>
+                  <div className={`pwd-criterion ${pwdReqs.special ? 'valid' : ''}`}>
+                    <span className="criterion-indicator">{pwdReqs.special ? '✓' : '•'}</span>
+                    <span>Special (@, #, $, !)</span>
+                  </div>
+                </div>
               </div>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                Official medical council registration number for administrative verification.
-              </span>
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="docPassword">Password * (min 6 characters)</label>
-              <div className="input-wrapper">
-                <input
-                  id="docPassword"
-                  type={showDocPassword ? 'text' : 'password'}
-                  className="form-input"
-                  placeholder="Create password"
-                  value={docPassword}
-                  onChange={(e) => setDocPassword(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
-                <button
-                  type="button"
-                  className="toggle-password-btn"
-                  onClick={() => setShowDocPassword((prev) => !prev)}
-                  title={showDocPassword ? 'Hide password' : 'Show password'}
-                  aria-label={showDocPassword ? 'Hide password' : 'Show password'}
-                  tabIndex={-1}
-                >
-                  {showDocPassword ? '👁️' : '🔒'}
-                </button>
+              <div className="form-group">
+                <label htmlFor="regConfirmPassword" className="form-label">Confirm Password *</label>
+                <div className="input-field-wrapper">
+                  <input
+                    id="regConfirmPassword"
+                    type={showRegConfirmPassword ? 'text' : 'password'}
+                    className="form-input"
+                    placeholder="Re-enter password"
+                    value={regConfirmPassword}
+                    onChange={(e) => setRegConfirmPassword(e.target.value)}
+                    disabled={regLoading}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="password-toggle-btn"
+                    onClick={() => setShowRegConfirmPassword((prev) => !prev)}
+                    title={showRegConfirmPassword ? 'Hide password' : 'Show password'}
+                    aria-label={showRegConfirmPassword ? 'Hide password' : 'Show password'}
+                    tabIndex={-1}
+                  >
+                    {showRegConfirmPassword ? (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
-            </div>
 
-            <div className="form-group">
-              <label htmlFor="docConfirmPassword">Confirm Password *</label>
-              <div className="input-wrapper">
-                <input
-                  id="docConfirmPassword"
-                  type={showDocPassword ? 'text' : 'password'}
-                  className="form-input"
-                  placeholder="Re-enter password"
-                  value={docConfirmPassword}
-                  onChange={(e) => setDocConfirmPassword(e.target.value)}
-                  disabled={docLoading}
-                  required
-                />
-              </div>
-            </div>
+              <button type="submit" className="btn-primary-signin" disabled={regLoading}>
+                {regLoading ? (
+                  <>
+                    <span className="btn-spinner"></span>
+                    <span>Verifying & Linking...</span>
+                  </>
+                ) : (
+                  'Create Patient Account'
+                )}
+              </button>
+            </form>
 
-            <button type="submit" className="btn-submit" disabled={docLoading}>
-              {docLoading ? (
-                <>
-                  <span className="spinner"></span>
-                  <span>Submitting Credentials...</span>
-                </>
-              ) : (
-                'Submit Doctor Registration'
-              )}
-            </button>
-
-            <div
-              style={{
-                fontSize: '0.75rem',
-                color: 'var(--text-secondary)',
-                backgroundColor: '#f8fafc',
-                padding: '0.6rem 0.8rem',
-                borderRadius: 'var(--radius-md)',
-                border: '1px solid #e2e8f0',
-                marginTop: '0.25rem',
-                lineHeight: 1.4,
-              }}
-            >
-              🔒 <strong>Verification Policy:</strong> Doctor accounts remain pending until reviewed and approved by an Administrator.
+            <div className="auth-footer-nav">
+              <span>Already have an account? </span>
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  setView('signin')
+                  setError('')
+                  setSuccessMsg('')
+                }}
+              >
+                Sign In
+              </button>
             </div>
-          </form>
+          </div>
         )}
 
-        <div className="login-footer-note">
-          <strong>Session Authentication:</strong> Protected by Spring Security HTTP-only cookies.
-          Credentials are never stored in browser storage.
+        <div className="card-security-footer">
+          <span>Protected by Spring Security HTTP-only session cookies</span>
         </div>
       </div>
     </div>

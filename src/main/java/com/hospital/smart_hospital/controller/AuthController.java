@@ -1,10 +1,12 @@
 package com.hospital.smart_hospital.controller;
 
 import com.hospital.smart_hospital.dto.ApiResponse;
+import com.hospital.smart_hospital.dto.ChangePasswordRequest;
 import com.hospital.smart_hospital.dto.DoctorRegistrationRequest;
 import com.hospital.smart_hospital.dto.LoginRequest;
 import com.hospital.smart_hospital.dto.PatientSelfRegistrationRequest;
 import com.hospital.smart_hospital.dto.RegisterRequest;
+import com.hospital.smart_hospital.dto.StaffAccountRequest;
 import com.hospital.smart_hospital.dto.UserResponse;
 import com.hospital.smart_hospital.exception.BadRequestException;
 import com.hospital.smart_hospital.exception.DuplicateResourceException;
@@ -15,6 +17,7 @@ import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.User;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
+import com.hospital.smart_hospital.util.PasswordValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import java.time.LocalDateTime;
@@ -205,8 +208,14 @@ public class AuthController {
 
     @PostMapping("/register-doctor")
     public ResponseEntity<ApiResponse<UserResponse>> registerDoctor(
-            @RequestBody DoctorRegistrationRequest request
+            @RequestBody DoctorRegistrationRequest request,
+            Authentication authentication
     ) {
+        if (authentication == null || authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access Denied: Doctor accounts can only be provisioned by hospital administrators."));
+        }
+
         validateDoctorRegistrationRequest(request);
 
         String trimmedUsername = request.getUsername().trim();
@@ -284,6 +293,141 @@ public class AuthController {
         return ResponseEntity.ok(ApiResponse.ok("Doctor registration for '" + saved.getFullName() + "' has been rejected.", mapToResponse(saved)));
     }
 
+    @PostMapping("/staff")
+    public ResponseEntity<ApiResponse<UserResponse>> createStaffAccount(
+            @RequestBody StaffAccountRequest request,
+            Authentication authentication
+    ) {
+        if (authentication == null || authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access Denied: Only ADMIN can create staff accounts."));
+        }
+
+        validateStaffAccountRequest(request);
+
+        String trimmedUsername = request.getUsername().trim();
+        if (userRepository.existsByUsernameIgnoreCase(trimmedUsername)) {
+            throw new DuplicateResourceException("Username '" + trimmedUsername + "' already exists.");
+        }
+
+        if (request.getEmail() != null && !request.getEmail().trim().isEmpty()) {
+            String trimmedEmail = request.getEmail().trim().toLowerCase();
+            if (userRepository.existsByEmailIgnoreCase(trimmedEmail)) {
+                throw new DuplicateResourceException("Email '" + trimmedEmail + "' is already registered.");
+            }
+        }
+
+        if (request.getMedicalRegistrationNumber() != null && !request.getMedicalRegistrationNumber().trim().isEmpty()) {
+            String trimmedMed = request.getMedicalRegistrationNumber().trim();
+            if (userRepository.existsByMedicalRegistrationNumberIgnoreCase(trimmedMed)) {
+                throw new DuplicateResourceException("Medical registration number '" + trimmedMed + "' is already registered.");
+            }
+        }
+
+        User staff = new User();
+        staff.setUsername(trimmedUsername);
+        staff.setPassword(passwordEncoder.encode(request.getTemporaryPassword()));
+        staff.setFullName(request.getFullName().trim());
+        staff.setRole(request.getRole());
+        staff.setEnabled(true);
+        staff.setPasswordChangeRequired(true);
+        staff.setApprovalStatus(DoctorApprovalStatus.APPROVED);
+        staff.setEmail(request.getEmail() != null && !request.getEmail().trim().isEmpty() ? request.getEmail().trim().toLowerCase() : null);
+        staff.setSpecialization(request.getSpecialization() != null && !request.getSpecialization().trim().isEmpty() ? request.getSpecialization().trim() : null);
+        staff.setQualifications(request.getQualifications() != null && !request.getQualifications().trim().isEmpty() ? request.getQualifications().trim() : null);
+        staff.setMedicalRegistrationNumber(request.getMedicalRegistrationNumber() != null && !request.getMedicalRegistrationNumber().trim().isEmpty() ? request.getMedicalRegistrationNumber().trim() : null);
+        staff.setCreatedAt(LocalDateTime.now());
+
+        User saved = userRepository.save(staff);
+        return new ResponseEntity<>(ApiResponse.ok("Staff account created successfully", mapToResponse(saved)), HttpStatus.CREATED);
+    }
+
+    @GetMapping("/staff")
+    public ResponseEntity<ApiResponse<List<UserResponse>>> getStaffAccounts(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access Denied: Only ADMIN can view staff accounts."));
+        }
+
+        List<User> staff = userRepository.findByRoleIn(List.of(Role.ROLE_DOCTOR, Role.ROLE_RECEPTIONIST, Role.ROLE_ADMIN));
+        List<UserResponse> responses = staff.stream().map(this::mapToResponse).toList();
+        return ResponseEntity.ok(ApiResponse.ok("Staff accounts retrieved successfully", responses));
+    }
+
+    @PatchMapping("/users/{id}/toggle-status")
+    public ResponseEntity<ApiResponse<UserResponse>> toggleUserStatus(
+            @PathVariable Long id,
+            Authentication authentication
+    ) {
+        if (authentication == null || authentication.getAuthorities().stream().noneMatch(a -> a.getAuthority().equals("ROLE_ADMIN"))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(ApiResponse.error("Access Denied: Only ADMIN can toggle user status."));
+        }
+
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found with id: " + id));
+
+        if (authentication.getName().equalsIgnoreCase(user.getUsername())) {
+            throw new BadRequestException("You cannot toggle your own active account status.");
+        }
+
+        user.setEnabled(!user.isEnabled());
+        User saved = userRepository.save(user);
+
+        return ResponseEntity.ok(ApiResponse.ok("User status updated successfully", mapToResponse(saved)));
+    }
+
+    @PostMapping("/change-password")
+    public ResponseEntity<ApiResponse<String>> changePassword(
+            @RequestBody ChangePasswordRequest request,
+            Authentication authentication
+    ) {
+        if (authentication == null || !authentication.isAuthenticated() || "anonymousUser".equals(authentication.getPrincipal())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(ApiResponse.error("Unauthenticated"));
+        }
+
+        if (request == null || request.getNewPassword() == null) {
+            throw new BadRequestException("New password is required.");
+        }
+        PasswordValidator.validatePassword(request.getNewPassword());
+
+        String username = authentication.getName();
+        User user = userRepository.findByUsernameIgnoreCase(username)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found: " + username));
+
+        if (request.getCurrentPassword() == null || !passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
+            throw new BadRequestException("Current password is incorrect.");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user.setPasswordChangeRequired(false);
+        userRepository.save(user);
+
+        return ResponseEntity.ok(ApiResponse.ok("Password changed successfully", "Password changed successfully"));
+    }
+
+    private void validateStaffAccountRequest(StaffAccountRequest request) {
+        if (request == null) {
+            throw new BadRequestException("Staff account request cannot be null.");
+        }
+        if (request.getFullName() == null || request.getFullName().trim().isEmpty()) {
+            throw new BadRequestException("Full name is required.");
+        }
+        if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
+            throw new BadRequestException("Username is required.");
+        }
+        if (request.getRole() == null || (request.getRole() != Role.ROLE_DOCTOR && request.getRole() != Role.ROLE_RECEPTIONIST)) {
+            throw new BadRequestException("Role must be either ROLE_DOCTOR or ROLE_RECEPTIONIST.");
+        }
+        PasswordValidator.validatePassword(request.getTemporaryPassword());
+        if (request.getRole() == Role.ROLE_DOCTOR) {
+            if (request.getSpecialization() == null || request.getSpecialization().trim().isEmpty()) {
+                throw new BadRequestException("Doctor specialization is required.");
+            }
+        }
+    }
+
     private void validateDoctorRegistrationRequest(DoctorRegistrationRequest request) {
         if (request == null) {
             throw new BadRequestException("Registration request cannot be null.");
@@ -306,9 +450,7 @@ public class AuthController {
         if (request.getMedicalRegistrationNumber() == null || request.getMedicalRegistrationNumber().trim().isEmpty()) {
             throw new BadRequestException("Medical registration number is required.");
         }
-        if (request.getPassword() == null || request.getPassword().length() < 6) {
-            throw new BadRequestException("Password must be at least 6 characters long.");
-        }
+        PasswordValidator.validatePassword(request.getPassword());
     }
 
     private void validatePatientRegistrationRequest(PatientSelfRegistrationRequest request) {
@@ -318,9 +460,7 @@ public class AuthController {
         if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
             throw new BadRequestException("Username is required.");
         }
-        if (request.getPassword() == null || request.getPassword().length() < 6) {
-            throw new BadRequestException("Password must be at least 6 characters long.");
-        }
+        PasswordValidator.validatePassword(request.getPassword());
         if (request.getFullName() == null || request.getFullName().trim().isEmpty()) {
             throw new BadRequestException("Full name is required.");
         }
@@ -336,9 +476,7 @@ public class AuthController {
         if (request.getUsername() == null || request.getUsername().trim().isEmpty()) {
             throw new BadRequestException("Username is required.");
         }
-        if (request.getPassword() == null || request.getPassword().length() < 6) {
-            throw new BadRequestException("Password must be at least 6 characters long.");
-        }
+        PasswordValidator.validatePassword(request.getPassword());
         if (request.getFullName() == null || request.getFullName().trim().isEmpty()) {
             throw new BadRequestException("Full name is required.");
         }
@@ -356,7 +494,8 @@ public class AuthController {
                 user.getSpecialization(),
                 user.getQualifications(),
                 user.getMedicalRegistrationNumber(),
-                user.getApprovalStatus()
+                user.getApprovalStatus(),
+                user.isPasswordChangeRequired()
         );
     }
 }

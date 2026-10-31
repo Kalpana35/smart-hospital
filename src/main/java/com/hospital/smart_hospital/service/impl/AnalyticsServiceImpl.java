@@ -3,14 +3,18 @@ package com.hospital.smart_hospital.service.impl;
 import com.hospital.smart_hospital.dto.HospitalAnalyticsResponse;
 import com.hospital.smart_hospital.dto.RoomTypeAnalyticsDto;
 import com.hospital.smart_hospital.dto.WardAnalyticsDto;
+import com.hospital.smart_hospital.model.AppointmentStatus;
 import com.hospital.smart_hospital.model.Bed;
 import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.PatientStatus;
+import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.Room;
+import com.hospital.smart_hospital.repository.AppointmentRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.RoomRepository;
+import com.hospital.smart_hospital.repository.UserRepository;
 import com.hospital.smart_hospital.service.AnalyticsService;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -28,15 +32,21 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final RoomRepository roomRepository;
     private final BedRepository bedRepository;
     private final PatientRepository patientRepository;
+    private final UserRepository userRepository;
+    private final AppointmentRepository appointmentRepository;
 
     public AnalyticsServiceImpl(
             RoomRepository roomRepository,
             BedRepository bedRepository,
-            PatientRepository patientRepository
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AppointmentRepository appointmentRepository
     ) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.patientRepository = patientRepository;
+        this.userRepository = userRepository;
+        this.appointmentRepository = appointmentRepository;
     }
 
     @Override
@@ -135,6 +145,13 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         }
         roomTypeList.sort(Comparator.comparing(RoomTypeAnalyticsDto::getRoomType, String.CASE_INSENSITIVE_ORDER));
 
+        int totalDoctors = (int) userRepository.countByRole(Role.ROLE_DOCTOR);
+        int totalReceptionists = (int) userRepository.countByRole(Role.ROLE_RECEPTIONIST);
+        int totalAppointments = (int) appointmentRepository.count();
+        int scheduledAppointments = (int) appointmentRepository.countByStatus(AppointmentStatus.SCHEDULED);
+        int completedAppointments = (int) appointmentRepository.countByStatus(AppointmentStatus.COMPLETED);
+        int cancelledAppointments = (int) appointmentRepository.countByStatus(AppointmentStatus.CANCELLED);
+
         return new HospitalAnalyticsResponse(
                 totalRooms,
                 totalBeds,
@@ -145,6 +162,12 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 dischargedPatients,
                 overallOccupancyRate,
                 avgLengthOfStayHours,
+                totalDoctors,
+                totalReceptionists,
+                totalAppointments,
+                scheduledAppointments,
+                completedAppointments,
+                cancelledAppointments,
                 wardList,
                 roomTypeList
         );

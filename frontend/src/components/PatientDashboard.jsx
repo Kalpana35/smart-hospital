@@ -5,6 +5,7 @@ export default function PatientDashboard({ user, onLogout }) {
   const [patientData, setPatientData] = useState(null)
   const [appointments, setAppointments] = useState([])
   const [doctors, setDoctors] = useState([])
+  const [consultations, setConsultations] = useState([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState(null)
 
@@ -26,10 +27,11 @@ export default function PatientDashboard({ user, onLogout }) {
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
-      const [patientRes, apptRes, docRes] = await Promise.all([
+      const [patientRes, apptRes, docRes, consultRes] = await Promise.all([
         fetch('/api/patients/me', { credentials: 'include' }),
         fetch('/api/appointments/my', { credentials: 'include' }),
         fetch('/api/appointments/doctors', { credentials: 'include' }),
+        fetch('/api/consultations/my', { credentials: 'include' }),
       ])
 
       if (patientRes.ok) {
@@ -53,6 +55,11 @@ export default function PatientDashboard({ user, onLogout }) {
           }
         }
       }
+
+      if (consultRes.ok) {
+        const cJson = await consultRes.json()
+        setConsultations(cJson.data || [])
+      }
     } catch (err) {
       showToast('Error loading patient data: ' + err.message, 'error')
     } finally {
@@ -65,10 +72,11 @@ export default function PatientDashboard({ user, onLogout }) {
 
     const initLoad = async () => {
       try {
-        const [patientRes, apptRes, docRes] = await Promise.all([
+        const [patientRes, apptRes, docRes, consultRes] = await Promise.all([
           fetch('/api/patients/me', { credentials: 'include' }),
           fetch('/api/appointments/my', { credentials: 'include' }),
           fetch('/api/appointments/doctors', { credentials: 'include' }),
+          fetch('/api/consultations/my', { credentials: 'include' }),
         ])
 
         if (ignore) return
@@ -93,6 +101,11 @@ export default function PatientDashboard({ user, onLogout }) {
               setSelectedDoctorId(String(dJson.data[0].id))
             }
           }
+        }
+
+        if (consultRes.ok) {
+          const cJson = await consultRes.json()
+          setConsultations(cJson.data || [])
         }
       } catch (err) {
         if (!ignore) {
@@ -403,6 +416,74 @@ export default function PatientDashboard({ user, onLogout }) {
                           ) : (
                             <span style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>—</span>
                           )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Medical Consultations & Prescriptions Card */}
+          <div className="patient-portal-card">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem', marginBottom: '1rem' }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--text-primary)' }}>
+                  My Medical Prescriptions &amp; Clinical Notes
+                </h2>
+                <p style={{ margin: '0.25rem 0 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Official diagnoses, care plans, and prescribed medications from hospital physicians
+                </p>
+              </div>
+              <span style={{ background: '#dbeafe', color: '#1e40af', padding: '0.35rem 0.75rem', borderRadius: '12px', fontSize: '0.85rem', fontWeight: 600 }}>
+                {consultations.length} Record{consultations.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="table-responsive">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Date &amp; Time</th>
+                    <th>Attending Doctor</th>
+                    <th>Clinical Diagnosis</th>
+                    <th>Treatment Plan</th>
+                    <th>Prescription (Rx) &amp; Dosage</th>
+                    <th>Physician Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consultations.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-secondary)' }}>
+                        No medical consultations or prescriptions recorded yet.
+                      </td>
+                    </tr>
+                  ) : (
+                    consultations.map((c) => (
+                      <tr key={c.id}>
+                        <td style={{ fontWeight: 600 }}>
+                          {c.consultationDateTime ? new Date(c.consultationDateTime).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'N/A'}
+                        </td>
+                        <td>Dr. {c.doctorName || 'Hospital Physician'}</td>
+                        <td>
+                          <span style={{ background: '#eff6ff', color: '#1d4ed8', padding: '0.25rem 0.5rem', borderRadius: '4px', fontWeight: 600, fontSize: '0.85rem' }}>
+                            {c.diagnosis}
+                          </span>
+                        </td>
+                        <td>{c.treatment || '—'}</td>
+                        <td>
+                          {c.prescription ? (
+                            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', color: '#166534', fontFamily: 'monospace' }}>
+                              {c.prescription}
+                            </div>
+                          ) : (
+                            '—'
+                          )}
+                        </td>
+                        <td style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '250px' }}>
+                          {c.notes || '—'}
                         </td>
                       </tr>
                     ))

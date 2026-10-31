@@ -1,5 +1,7 @@
 package com.hospital.smart_hospital.dto;
 
+import com.hospital.smart_hospital.model.AllocationType;
+
 public class PatientAdmissionRequest {
 
     private String patientCode;
@@ -14,14 +16,22 @@ public class PatientAdmissionRequest {
     private String portalUsername;
     private String portalPassword;
 
+    // Allocation tracking & override reason
+    private AllocationType allocationType = AllocationType.RECOMMENDED;
+    private String overrideReason;
+
     public PatientAdmissionRequest() {
     }
 
     public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId) {
-        this(patientCode, name, age, gender, diagnosis, bedId, false, null, null);
+        this(patientCode, name, age, gender, diagnosis, bedId, false, null, null, AllocationType.RECOMMENDED, null);
     }
 
     public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId, Boolean createPortalAccount, String portalUsername, String portalPassword) {
+        this(patientCode, name, age, gender, diagnosis, bedId, createPortalAccount, portalUsername, portalPassword, AllocationType.RECOMMENDED, null);
+    }
+
+    public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId, Boolean createPortalAccount, String portalUsername, String portalPassword, AllocationType allocationType, String overrideReason) {
         this.patientCode = patientCode;
         this.name = name;
         this.age = age;
@@ -31,6 +41,8 @@ public class PatientAdmissionRequest {
         this.createPortalAccount = createPortalAccount;
         this.portalUsername = portalUsername;
         this.portalPassword = portalPassword;
+        this.allocationType = allocationType != null ? allocationType : AllocationType.RECOMMENDED;
+        this.overrideReason = overrideReason;
     }
 
     public String getPatientCode() {
@@ -103,6 +115,22 @@ public class PatientAdmissionRequest {
 
     public void setPortalPassword(String portalPassword) {
         this.portalPassword = portalPassword;
+    }
+
+    public AllocationType getAllocationType() {
+        return allocationType;
+    }
+
+    public void setAllocationType(AllocationType allocationType) {
+        this.allocationType = allocationType;
+    }
+
+    public String getOverrideReason() {
+        return overrideReason;
+    }
+
+    public void setOverrideReason(String overrideReason) {
+        this.overrideReason = overrideReason;
     }
 }
 

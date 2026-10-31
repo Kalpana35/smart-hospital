@@ -55,6 +55,9 @@ class RoomAndBedIntegrationTest {
     @Autowired
     private AppointmentRepository appointmentRepository;
 
+    @Autowired
+    private com.hospital.smart_hospital.repository.ConsultationRepository consultationRepository;
+
     private ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
@@ -62,6 +65,7 @@ class RoomAndBedIntegrationTest {
         mockMvc = MockMvcBuilders.standaloneSetup(roomController, bedController)
                 .setControllerAdvice(globalExceptionHandler)
                 .build();
+        consultationRepository.deleteAll();
         appointmentRepository.deleteAll();
         patientRepository.deleteAll();
         bedRepository.deleteAll();

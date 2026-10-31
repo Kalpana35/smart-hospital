@@ -17,6 +17,7 @@ public class UserResponse {
     private String qualifications;
     private String medicalRegistrationNumber;
     private DoctorApprovalStatus approvalStatus;
+    private boolean passwordChangeRequired;
 
     public UserResponse() {
     }
@@ -29,11 +30,18 @@ public class UserResponse {
         this.enabled = enabled;
         this.createdAt = createdAt;
         this.approvalStatus = DoctorApprovalStatus.APPROVED;
+        this.passwordChangeRequired = false;
     }
 
     public UserResponse(Long id, String username, String fullName, Role role, boolean enabled, LocalDateTime createdAt,
                         String email, String specialization, String qualifications, String medicalRegistrationNumber,
                         DoctorApprovalStatus approvalStatus) {
+        this(id, username, fullName, role, enabled, createdAt, email, specialization, qualifications, medicalRegistrationNumber, approvalStatus, false);
+    }
+
+    public UserResponse(Long id, String username, String fullName, Role role, boolean enabled, LocalDateTime createdAt,
+                        String email, String specialization, String qualifications, String medicalRegistrationNumber,
+                        DoctorApprovalStatus approvalStatus, boolean passwordChangeRequired) {
         this.id = id;
         this.username = username;
         this.fullName = fullName;
@@ -45,6 +53,7 @@ public class UserResponse {
         this.qualifications = qualifications;
         this.medicalRegistrationNumber = medicalRegistrationNumber;
         this.approvalStatus = approvalStatus != null ? approvalStatus : DoctorApprovalStatus.APPROVED;
+        this.passwordChangeRequired = passwordChangeRequired;
     }
 
     public Long getId() {
@@ -133,6 +142,14 @@ public class UserResponse {
 
     public void setApprovalStatus(DoctorApprovalStatus approvalStatus) {
         this.approvalStatus = approvalStatus;
+    }
+
+    public boolean isPasswordChangeRequired() {
+        return passwordChangeRequired;
+    }
+
+    public void setPasswordChangeRequired(boolean passwordChangeRequired) {
+        this.passwordChangeRequired = passwordChangeRequired;
     }
 }
 

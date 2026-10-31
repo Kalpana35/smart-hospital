@@ -42,6 +42,10 @@ export default function DoctorDashboard({ user, onLogout }) {
   const [appointments, setAppointments] = useState([])
   const [completingAppt, setCompletingAppt] = useState(null)
   const [consultNotes, setConsultNotes] = useState('')
+  const [consultDiagnosis, setConsultDiagnosis] = useState('')
+  const [consultTreatment, setConsultTreatment] = useState('')
+  const [consultPrescription, setConsultPrescription] = useState('')
+  const [consultations, setConsultations] = useState([])
   const [submittingComplete, setSubmittingComplete] = useState(false)
 
   const showToast = useCallback((message, type = 'info') => {
@@ -71,11 +75,12 @@ export default function DoctorDashboard({ user, onLogout }) {
   const loadAllData = useCallback(async () => {
     try {
       setLoading(true)
-      const [roomsRes, bedsRes, patientsRes, apptRes] = await Promise.all([
+      const [roomsRes, bedsRes, patientsRes, apptRes, consultRes] = await Promise.all([
         apiFetch('/api/rooms'),
         apiFetch('/api/beds'),
         apiFetch('/api/patients'),
         apiFetch('/api/appointments/my'),
+        apiFetch('/api/consultations/my'),
       ])
 
       if (roomsRes.ok && bedsRes.ok && patientsRes.ok) {
@@ -90,6 +95,10 @@ export default function DoctorDashboard({ user, onLogout }) {
         if (apptRes.ok) {
           const apptJson = await apptRes.json()
           setAppointments(apptJson.data || [])
+        }
+        if (consultRes.ok) {
+          const consultJson = await consultRes.json()
+          setConsultations(consultJson.data || [])
         }
       } else {
         showToast('Failed to load clinical data from server', 'error')
@@ -106,11 +115,12 @@ export default function DoctorDashboard({ user, onLogout }) {
 
     const initLoad = async () => {
       try {
-        const [roomsRes, bedsRes, patientsRes, apptRes] = await Promise.all([
+        const [roomsRes, bedsRes, patientsRes, apptRes, consultRes] = await Promise.all([
           apiFetch('/api/rooms'),
           apiFetch('/api/beds'),
           apiFetch('/api/patients'),
           apiFetch('/api/appointments/my'),
+          apiFetch('/api/consultations/my'),
         ])
 
         if (!ignore && roomsRes.ok && bedsRes.ok && patientsRes.ok) {
@@ -125,6 +135,10 @@ export default function DoctorDashboard({ user, onLogout }) {
           if (apptRes.ok) {
             const apptJson = await apptRes.json()
             setAppointments(apptJson.data || [])
+          }
+          if (consultRes.ok) {
+            const consultJson = await consultRes.json()
+            setConsultations(consultJson.data || [])
           }
         } else if (!ignore) {
           showToast('Failed to load clinical data from server', 'error')
@@ -152,16 +166,35 @@ export default function DoctorDashboard({ user, onLogout }) {
     if (!completingAppt) return
     setSubmittingComplete(true)
     try {
+      // 1. Record consultation diagnosis & prescription
+      await apiFetch('/api/consultations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          patientId: completingAppt.patientId,
+          appointmentId: completingAppt.id,
+          diagnosis: consultDiagnosis.trim() || completingAppt.reason || 'General Consultation',
+          treatment: consultTreatment.trim() || undefined,
+          prescription: consultPrescription.trim() || undefined,
+          notes: consultNotes.trim() || undefined,
+          status: 'COMPLETED',
+        }),
+      })
+
+      // 2. Mark appointment completed
       const res = await apiFetch(`/api/appointments/${completingAppt.id}/complete`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ notes: consultNotes.trim() }),
+        body: JSON.stringify({ notes: consultNotes.trim() || consultDiagnosis.trim() }),
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        showToast('Consultation marked as completed!', 'success')
+        showToast('Clinical consultation & prescription recorded successfully!', 'success')
         setCompletingAppt(null)
         setConsultNotes('')
+        setConsultDiagnosis('')
+        setConsultTreatment('')
+        setConsultPrescription('')
         loadAllData()
       } else {
         showToast(data.message || 'Failed to complete appointment', 'error')
@@ -513,6 +546,12 @@ export default function DoctorDashboard({ user, onLogout }) {
           >
             <span>📅</span> Consultations & Schedule
           </button>
+          <button
+            className={`nav-item ${activeTab === 'consultations' ? 'active' : ''}`}
+            onClick={() => setActiveTab('consultations')}
+          >
+            <span>📋</span> Prescriptions & Notes ({consultations.length})
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -531,6 +570,7 @@ export default function DoctorDashboard({ user, onLogout }) {
               {activeTab === 'beds' && 'Live Bed Availability Matrix'}
               {activeTab === 'recommendations' && 'Clinical Bed Allocation Optimizer'}
               {activeTab === 'appointments' && 'My Consultations & Appointment Schedule'}
+              {activeTab === 'consultations' && 'Clinical Prescriptions & Consultation Notes'}
             </h1>
             <p>
               {activeTab === 'inpatients' &&
@@ -541,6 +581,8 @@ export default function DoctorDashboard({ user, onLogout }) {
                 'Compute optimal bed assignments for incoming patients based on required care.'}
               {activeTab === 'appointments' &&
                 'Review scheduled visits, update consultation encounter notes, and mark completed.'}
+              {activeTab === 'consultations' &&
+                'Comprehensive history of recorded diagnoses, treatments, and patient prescriptions.'}
             </p>
           </div>
 
@@ -1142,6 +1184,91 @@ export default function DoctorDashboard({ user, onLogout }) {
             </div>
           </section>
         )}
+
+        {/* ========================================================= */}
+        {/* Tab 5: Clinical Prescriptions & Consultation Notes        */}
+        {/* ========================================================= */}
+        {activeTab === 'consultations' && (
+          <section className="section-panel" aria-label="Clinical Prescriptions">
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 className="card-title">Recorded Consultations &amp; Medical Prescriptions ({consultations.length})</h3>
+                  <p className="card-subtitle">
+                    Permanent audit history of diagnoses, clinical assessments, treatments, and drug prescriptions
+                  </p>
+                </div>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={loadAllData}
+                  disabled={loading}
+                >
+                  &#8635; Refresh Records
+                </button>
+              </div>
+
+              <div className="table-wrapper">
+                <table className="doctor-table">
+                  <thead>
+                    <tr>
+                      <th>Date / Time</th>
+                      <th>Patient</th>
+                      <th>Diagnosis</th>
+                      <th>Treatment Plan</th>
+                      <th>Prescription (Rx)</th>
+                      <th>Clinical Notes</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {consultations.length === 0 ? (
+                      <tr>
+                        <td colSpan="7" className="empty-cell">
+                          No consultations recorded yet. Finalize an appointment consultation to create clinical records.
+                        </td>
+                      </tr>
+                    ) : (
+                      consultations.map((c) => (
+                        <tr key={c.id}>
+                          <td>
+                            <strong>{c.consultationDateTime ? new Date(c.consultationDateTime).toLocaleString() : 'N/A'}</strong>
+                          </td>
+                          <td>
+                            <strong>{c.patientName}</strong>
+                            <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                              Code: <code>{c.patientCode}</code>
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge badge-primary">{c.diagnosis}</span>
+                          </td>
+                          <td>{c.treatment || '—'}</td>
+                          <td>
+                            {c.prescription ? (
+                              <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '0.4rem 0.6rem', borderRadius: '4px', fontSize: '0.85rem', color: '#166534', fontFamily: 'monospace' }}>
+                                {c.prescription}
+                              </div>
+                            ) : (
+                              '—'
+                            )}
+                          </td>
+                          <td>
+                            <div style={{ maxWidth: '240px', fontSize: '0.85rem' }}>
+                              {c.notes || '—'}
+                            </div>
+                          </td>
+                          <td>
+                            <span className="badge badge-success">{c.status}</span>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
 
       {/* ========================================================= */}
@@ -1424,15 +1551,49 @@ export default function DoctorDashboard({ user, onLogout }) {
             <form onSubmit={handleCompleteAppt}>
               <div className="modal-body">
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
-                  Patient: <strong>{completingAppt.patientName}</strong> (<code>{completingAppt.patientCode}</code>) • Visit: {completingAppt.reason}
+                  Patient: <strong>{completingAppt.patientName}</strong> (<code>{completingAppt.patientCode}</code>) &bull; Chief Complaint: {completingAppt.reason || 'General Visit'}
                 </p>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label htmlFor="consult-diagnosis" style={{ fontWeight: 600 }}>Clinical Diagnosis *</label>
+                  <input
+                    id="consult-diagnosis"
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Acute Bronchitis, Type 2 Diabetes, Migraine"
+                    value={consultDiagnosis}
+                    onChange={(e) => setConsultDiagnosis(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label htmlFor="consult-treatment" style={{ fontWeight: 600 }}>Treatment Plan / Care Protocol</label>
+                  <input
+                    id="consult-treatment"
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Hydration, bed rest, nebulization, dietary restriction"
+                    value={consultTreatment}
+                    onChange={(e) => setConsultTreatment(e.target.value)}
+                  />
+                </div>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label htmlFor="consult-rx" style={{ fontWeight: 600 }}>Prescription (Rx) &amp; Medication Dosages</label>
+                  <textarea
+                    id="consult-rx"
+                    rows="3"
+                    className="form-control"
+                    placeholder="e.g. Amoxicillin 500mg PO TID x 7 days; Paracetamol 650mg PO Q6H PRN fever"
+                    value={consultPrescription}
+                    onChange={(e) => setConsultPrescription(e.target.value)}
+                  />
+                </div>
                 <div className="form-group">
-                  <label htmlFor="consult-notes">Doctor Clinical Notes / Treatment Plan</label>
+                  <label htmlFor="consult-notes" style={{ fontWeight: 600 }}>Doctor Notes &amp; Follow-up Advice</label>
                   <textarea
                     id="consult-notes"
-                    rows="4"
+                    rows="2"
                     className="form-control"
-                    placeholder="Enter physician assessment, prescribed treatment, or follow-up instructions..."
+                    placeholder="Enter physician assessment, follow-up instructions, or warnings..."
                     value={consultNotes}
                     onChange={(e) => setConsultNotes(e.target.value)}
                   />
@@ -1451,7 +1612,7 @@ export default function DoctorDashboard({ user, onLogout }) {
                   className="btn btn-primary"
                   disabled={submittingComplete}
                 >
-                  {submittingComplete ? 'Saving...' : 'Finalize & Mark Completed'}
+                  {submittingComplete ? 'Saving Records...' : 'Finalize & Record Prescription'}
                 </button>
               </div>
             </form>

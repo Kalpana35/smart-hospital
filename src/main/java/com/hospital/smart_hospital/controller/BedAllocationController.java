@@ -1,11 +1,15 @@
 package com.hospital.smart_hospital.controller;
 
 import com.hospital.smart_hospital.dto.ApiResponse;
+import com.hospital.smart_hospital.dto.BedAllocationHistoryResponse;
 import com.hospital.smart_hospital.dto.BedRecommendationRequest;
 import com.hospital.smart_hospital.dto.BedRecommendationResponse;
+import com.hospital.smart_hospital.service.BedAllocationHistoryService;
 import com.hospital.smart_hospital.service.BedRecommendationService;
 import java.util.List;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,9 +20,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class BedAllocationController {
 
     private final BedRecommendationService bedRecommendationService;
+    private final BedAllocationHistoryService bedAllocationHistoryService;
 
-    public BedAllocationController(BedRecommendationService bedRecommendationService) {
+    public BedAllocationController(
+            BedRecommendationService bedRecommendationService,
+            BedAllocationHistoryService bedAllocationHistoryService
+    ) {
         this.bedRecommendationService = bedRecommendationService;
+        this.bedAllocationHistoryService = bedAllocationHistoryService;
     }
 
     @PostMapping("/recommend")
@@ -29,9 +38,21 @@ public class BedAllocationController {
 
         String message = recommendations.isEmpty()
                 ? "No suitable available beds found matching criteria"
-                : "Bed recommendations retrieved successfully";
+        : "Bed recommendations retrieved successfully";
 
         return ResponseEntity.ok(ApiResponse.ok(message, recommendations));
+    }
+
+    @GetMapping("/history")
+    public ResponseEntity<ApiResponse<List<BedAllocationHistoryResponse>>> getAllocationHistory() {
+        List<BedAllocationHistoryResponse> history = bedAllocationHistoryService.getAllAllocationHistory();
+        return ResponseEntity.ok(ApiResponse.ok("Bed allocation history retrieved successfully", history));
+    }
+
+    @GetMapping("/history/patient/{patientId}")
+    public ResponseEntity<ApiResponse<List<BedAllocationHistoryResponse>>> getAllocationHistoryByPatient(@PathVariable Long patientId) {
+        List<BedAllocationHistoryResponse> history = bedAllocationHistoryService.getAllocationHistoryByPatientId(patientId);
+        return ResponseEntity.ok(ApiResponse.ok("Bed allocation history for patient retrieved successfully", history));
     }
 }
 

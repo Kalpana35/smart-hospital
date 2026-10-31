@@ -6,9 +6,11 @@ import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.PatientStatus;
 import com.hospital.smart_hospital.model.Room;
+import com.hospital.smart_hospital.repository.AppointmentRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.RoomRepository;
+import com.hospital.smart_hospital.repository.UserRepository;
 import com.hospital.smart_hospital.service.impl.AnalyticsServiceImpl;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -34,6 +36,12 @@ class AnalyticsServiceTest {
 
     @Mock
     private PatientRepository patientRepository;
+
+    @Mock
+    private UserRepository userRepository;
+
+    @Mock
+    private AppointmentRepository appointmentRepository;
 
     @InjectMocks
     private AnalyticsServiceImpl analyticsService;

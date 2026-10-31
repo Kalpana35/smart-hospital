@@ -5,6 +5,7 @@ import com.hospital.smart_hospital.dto.PatientResponse;
 import com.hospital.smart_hospital.exception.BadRequestException;
 import com.hospital.smart_hospital.exception.DuplicateResourceException;
 import com.hospital.smart_hospital.exception.ResourceNotFoundException;
+import com.hospital.smart_hospital.model.AllocationType;
 import com.hospital.smart_hospital.model.Bed;
 import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.model.Patient;
@@ -15,10 +16,14 @@ import com.hospital.smart_hospital.model.User;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
+import com.hospital.smart_hospital.service.BedAllocationHistoryService;
 import com.hospital.smart_hospital.service.BedService;
 import com.hospital.smart_hospital.service.PatientService;
+import com.hospital.smart_hospital.util.PasswordValidator;
 import java.time.LocalDateTime;
 import java.util.List;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,19 +37,22 @@ public class PatientServiceImpl implements PatientService {
     private final BedService bedService;
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final BedAllocationHistoryService bedAllocationHistoryService;
 
     public PatientServiceImpl(
             PatientRepository patientRepository,
             BedRepository bedRepository,
             BedService bedService,
             UserRepository userRepository,
-            PasswordEncoder passwordEncoder
+            PasswordEncoder passwordEncoder,
+            BedAllocationHistoryService bedAllocationHistoryService
     ) {
         this.patientRepository = patientRepository;
         this.bedRepository = bedRepository;
         this.bedService = bedService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.bedAllocationHistoryService = bedAllocationHistoryService;
     }
 
     @Override
@@ -84,9 +92,7 @@ public class PatientServiceImpl implements PatientService {
                 throw new DuplicateResourceException("Username '" + username + "' is already taken for patient portal access.");
             }
             String password = request.getPortalPassword();
-            if (password == null || password.trim().length() < 6) {
-                throw new BadRequestException("Portal password must be at least 6 characters.");
-            }
+            PasswordValidator.validatePassword(password);
             portalUser = new User(
                     username,
                     passwordEncoder.encode(password.trim()),
@@ -94,6 +100,13 @@ public class PatientServiceImpl implements PatientService {
                     Role.ROLE_PATIENT
             );
             portalUser = userRepository.save(portalUser);
+        }
+
+        // Validate manual override reason
+        if (request.getAllocationType() == AllocationType.MANUAL_OVERRIDE) {
+            if (request.getOverrideReason() == null || request.getOverrideReason().trim().isEmpty()) {
+                throw new BadRequestException("Override reason is required when performing manual bed allocation.");
+            }
         }
 
         // Mark bed as OCCUPIED
@@ -114,6 +127,21 @@ public class PatientServiceImpl implements PatientService {
         }
 
         Patient saved = patientRepository.save(patient);
+
+        // Record bed allocation history
+        String allocatedBy = "System";
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
+            allocatedBy = auth.getName();
+        }
+        bedAllocationHistoryService.recordAllocation(
+                bed,
+                saved,
+                allocatedBy,
+                request.getAllocationType() != null ? request.getAllocationType() : AllocationType.RECOMMENDED,
+                request.getOverrideReason()
+        );
+
         return mapToResponse(saved);
     }
 
@@ -141,6 +169,7 @@ public class PatientServiceImpl implements PatientService {
         patient.setDischargeDate(LocalDateTime.now());
 
         Patient updated = patientRepository.save(patient);
+        bedAllocationHistoryService.releaseAllocation(patientId);
         return mapToResponse(updated);
     }
 
@@ -197,9 +226,7 @@ public class PatientServiceImpl implements PatientService {
         if (username == null || username.trim().isEmpty()) {
             throw new BadRequestException("Username is required.");
         }
-        if (password == null || password.trim().length() < 6) {
-            throw new BadRequestException("Password must be at least 6 characters.");
-        }
+        PasswordValidator.validatePassword(password);
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Patient not found with ID: " + patientId));
         if (patient.getUser() != null) {

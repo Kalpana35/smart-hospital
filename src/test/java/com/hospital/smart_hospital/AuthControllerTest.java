@@ -2,9 +2,11 @@ package com.hospital.smart_hospital;
 
 import com.hospital.smart_hospital.controller.AuthController;
 import com.hospital.smart_hospital.dto.ApiResponse;
+import com.hospital.smart_hospital.dto.ChangePasswordRequest;
 import com.hospital.smart_hospital.dto.DoctorRegistrationRequest;
 import com.hospital.smart_hospital.dto.LoginRequest;
 import com.hospital.smart_hospital.dto.RegisterRequest;
+import com.hospital.smart_hospital.dto.StaffAccountRequest;
 import com.hospital.smart_hospital.dto.UserResponse;
 import com.hospital.smart_hospital.exception.DuplicateResourceException;
 import com.hospital.smart_hospital.model.DoctorApprovalStatus;
@@ -119,11 +121,11 @@ class AuthControllerTest {
     @Test
     @DisplayName("Should allow ADMIN to register a DOCTOR account")
     void testRegisterUser_ByAdmin_Success() {
-        RegisterRequest registerRequest = new RegisterRequest("dr.smith", "DoctorPass123", "Dr. John Smith", Role.ROLE_DOCTOR);
+        RegisterRequest registerRequest = new RegisterRequest("dr.smith", "DoctorPass@123", "Dr. John Smith", Role.ROLE_DOCTOR);
         Authentication adminAuth = new TestingAuthenticationToken("admin", "Secret@123", "ROLE_ADMIN");
 
         when(userRepository.existsByUsernameIgnoreCase("dr.smith")).thenReturn(false);
-        when(passwordEncoder.encode("DoctorPass123")).thenReturn("$2a$10$encodedHash");
+        when(passwordEncoder.encode("DoctorPass@123")).thenReturn("$2a$10$encodedHash");
 
         User doctorUser = new User("dr.smith", "$2a$10$encodedHash", "Dr. John Smith", Role.ROLE_DOCTOR);
         doctorUser.setId(2L);
@@ -192,7 +194,7 @@ class AuthControllerTest {
     }
 
     @Test
-    @DisplayName("Should register doctor with PENDING approval status and disabled account")
+    @DisplayName("Should register doctor with PENDING approval status and disabled account when called by ADMIN")
     void testRegisterDoctor_Success() {
         DoctorRegistrationRequest request = new DoctorRegistrationRequest(
                 "Dr. Sarah Connor",
@@ -201,13 +203,14 @@ class AuthControllerTest {
                 "Cardiology",
                 "MBBS, MD (Cardio)",
                 "MED-REG-98765",
-                "DoctorPass123"
+                "DoctorPass@123"
         );
+        Authentication adminAuth = new TestingAuthenticationToken("admin", "Secret@123", "ROLE_ADMIN");
 
         when(userRepository.existsByUsernameIgnoreCase("dr.sarah")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("sarah.connor@hospital.com")).thenReturn(false);
         when(userRepository.existsByMedicalRegistrationNumberIgnoreCase("MED-REG-98765")).thenReturn(false);
-        when(passwordEncoder.encode("DoctorPass123")).thenReturn("$2a$10$encodedPass");
+        when(passwordEncoder.encode("DoctorPass@123")).thenReturn("$2a$10$encodedPass");
 
         User savedUser = new User();
         savedUser.setId(10L);
@@ -223,7 +226,7 @@ class AuthControllerTest {
 
         when(userRepository.save(any(User.class))).thenReturn(savedUser);
 
-        ResponseEntity<ApiResponse<UserResponse>> response = authController.registerDoctor(request);
+        ResponseEntity<ApiResponse<UserResponse>> response = authController.registerDoctor(request, adminAuth);
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(response.getBody()).isNotNull();
@@ -232,6 +235,24 @@ class AuthControllerTest {
         assertThat(response.getBody().getData().getApprovalStatus()).isEqualTo(DoctorApprovalStatus.PENDING);
         assertThat(response.getBody().getData().isEnabled()).isFalse();
         verify(userRepository).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("Should reject doctor registration when unauthenticated or non-admin")
+    void testRegisterDoctor_ForbiddenForPublic() {
+        DoctorRegistrationRequest request = new DoctorRegistrationRequest(
+                "Dr. Sarah Connor",
+                "dr.sarah",
+                "sarah.connor@hospital.com",
+                "Cardiology",
+                "MBBS, MD (Cardio)",
+                "MED-REG-98765",
+                "DoctorPass@123"
+        );
+
+        ResponseEntity<ApiResponse<UserResponse>> response = authController.registerDoctor(request, null);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.FORBIDDEN);
+        assertThat(response.getBody().getMessage()).contains("Doctor accounts can only be provisioned by hospital administrators");
     }
 
     @Test
@@ -244,12 +265,13 @@ class AuthControllerTest {
                 "Cardiology",
                 "MBBS, MD (Cardio)",
                 "MED-REG-98765",
-                "DoctorPass123"
+                "DoctorPass@123"
         );
+        Authentication adminAuth = new TestingAuthenticationToken("admin", "Secret@123", "ROLE_ADMIN");
 
         when(userRepository.existsByUsernameIgnoreCase("dr.sarah")).thenReturn(true);
 
-        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request));
+        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request, adminAuth));
     }
 
     @Test
@@ -262,13 +284,14 @@ class AuthControllerTest {
                 "Cardiology",
                 "MBBS, MD (Cardio)",
                 "MED-REG-98765",
-                "DoctorPass123"
+                "DoctorPass@123"
         );
+        Authentication adminAuth = new TestingAuthenticationToken("admin", "Secret@123", "ROLE_ADMIN");
 
         when(userRepository.existsByUsernameIgnoreCase("dr.sarah")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("sarah.connor@hospital.com")).thenReturn(true);
 
-        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request));
+        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request, adminAuth));
     }
 
     @Test
@@ -281,14 +304,15 @@ class AuthControllerTest {
                 "Cardiology",
                 "MBBS, MD (Cardio)",
                 "MED-REG-98765",
-                "DoctorPass123"
+                "DoctorPass@123"
         );
+        Authentication adminAuth = new TestingAuthenticationToken("admin", "Secret@123", "ROLE_ADMIN");
 
         when(userRepository.existsByUsernameIgnoreCase("dr.sarah")).thenReturn(false);
         when(userRepository.existsByEmailIgnoreCase("sarah.connor@hospital.com")).thenReturn(false);
         when(userRepository.existsByMedicalRegistrationNumberIgnoreCase("MED-REG-98765")).thenReturn(true);
 
-        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request));
+        assertThrows(DuplicateResourceException.class, () -> authController.registerDoctor(request, adminAuth));
     }
 
     @Test
@@ -343,6 +367,57 @@ class AuthControllerTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody().getData().getApprovalStatus()).isEqualTo(DoctorApprovalStatus.REJECTED);
         assertThat(response.getBody().getData().isEnabled()).isFalse();
+    }
+
+    @Test
+    @DisplayName("Admin can create a receptionist staff account with temporary password and passwordChangeRequired=true")
+    void testCreateStaffAccount_Receptionist_Success() {
+        StaffAccountRequest request = new StaffAccountRequest(
+                "Jane Desk",
+                "jane.receptionist",
+                "jane@hospital.com",
+                Role.ROLE_RECEPTIONIST,
+                "TempPass@123",
+                null,
+                null,
+                null
+        );
+
+        Authentication adminAuth = new TestingAuthenticationToken("admin", "pwd", "ROLE_ADMIN");
+        when(userRepository.existsByUsernameIgnoreCase("jane.receptionist")).thenReturn(false);
+        when(passwordEncoder.encode("TempPass@123")).thenReturn("encodedTempPass");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User u = invocation.getArgument(0);
+            u.setId(50L);
+            return u;
+        });
+
+        ResponseEntity<ApiResponse<UserResponse>> response = authController.createStaffAccount(request, adminAuth);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(response.getBody().getData().getRole()).isEqualTo(Role.ROLE_RECEPTIONIST);
+        assertThat(response.getBody().getData().isPasswordChangeRequired()).isTrue();
+        assertThat(response.getBody().getData().isEnabled()).isTrue();
+    }
+
+    @Test
+    @DisplayName("Authenticated user can change password and clear passwordChangeRequired flag")
+    void testChangePassword_Success() {
+        ChangePasswordRequest request = new ChangePasswordRequest("oldSecret", "NewSecret@123");
+        Authentication userAuth = new TestingAuthenticationToken("user1", "oldSecret", "ROLE_RECEPTIONIST");
+
+        User user = new User("user1", "encodedOld", "User One", Role.ROLE_RECEPTIONIST);
+        user.setPasswordChangeRequired(true);
+
+        when(userRepository.findByUsernameIgnoreCase("user1")).thenReturn(Optional.of(user));
+        when(passwordEncoder.matches("oldSecret", "encodedOld")).thenReturn(true);
+        when(passwordEncoder.encode("NewSecret@123")).thenReturn("encodedNew");
+
+        ResponseEntity<ApiResponse<String>> response = authController.changePassword(request, userAuth);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(user.isPasswordChangeRequired()).isFalse();
+        verify(userRepository).save(user);
     }
 }
 

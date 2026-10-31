@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { validateStrongPassword } from '../utils/passwordPolicy'
 import './AdminDashboard.css'
 
 export default function AdminDashboard({ user, onLogout }) {
@@ -59,6 +60,24 @@ export default function AdminDashboard({ user, onLogout }) {
   const [loadingDoctors, setLoadingDoctors] = useState(false)
   const [actionDoctorId, setActionDoctorId] = useState(null)
 
+  // Staff Management state
+  const [staffList, setStaffList] = useState([])
+  const [loadingStaff, setLoadingStaff] = useState(false)
+  const [staffFullName, setStaffFullName] = useState('')
+  const [staffUsername, setStaffUsername] = useState('')
+  const [staffEmail, setStaffEmail] = useState('')
+  const [staffRole, setStaffRole] = useState('ROLE_DOCTOR')
+  const [staffTempPassword, setStaffTempPassword] = useState('')
+  const [staffSpecialization, setStaffSpecialization] = useState('')
+  const [staffQualifications, setStaffQualifications] = useState('')
+  const [staffMedRegNo, setStaffMedRegNo] = useState('')
+  const [creatingStaff, setCreatingStaff] = useState(false)
+  const [togglingStaffId, setTogglingStaffId] = useState(null)
+
+  // Bed Allocation History state
+  const [allocationHistory, setAllocationHistory] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random()
     setToasts((prev) => [...prev, { id, message, type }])
@@ -98,15 +117,47 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   }, [apiFetch])
 
+  const loadStaff = useCallback(async () => {
+    try {
+      setLoadingStaff(true)
+      const res = await apiFetch('/api/auth/staff')
+      if (res.ok) {
+        const json = await res.json()
+        setStaffList(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingStaff(false)
+    }
+  }, [apiFetch])
+
+  const loadAllocationHistory = useCallback(async () => {
+    try {
+      setLoadingHistory(true)
+      const res = await apiFetch('/api/allocations/history')
+      if (res.ok) {
+        const json = await res.json()
+        setAllocationHistory(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingHistory(false)
+    }
+  }, [apiFetch])
+
   const loadAllData = useCallback(async () => {
     try {
       setLoading(true)
-      const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes] = await Promise.all([
+      const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes] = await Promise.all([
         apiFetch('/api/rooms'),
         apiFetch('/api/beds'),
         apiFetch('/api/patients'),
         apiFetch('/api/analytics/summary'),
         apiFetch('/api/auth/doctors/pending'),
+        apiFetch('/api/auth/staff'),
+        apiFetch('/api/allocations/history'),
       ])
 
       if (roomsRes.ok && bedsRes.ok && patientsRes.ok) {
@@ -127,6 +178,16 @@ export default function AdminDashboard({ user, onLogout }) {
           const dJson = await doctorsRes.json()
           setPendingDoctors(dJson.data || [])
         }
+
+        if (staffRes && staffRes.ok) {
+          const sJson = await staffRes.json()
+          setStaffList(sJson.data || [])
+        }
+
+        if (histRes && histRes.ok) {
+          const hJson = await histRes.json()
+          setAllocationHistory(hJson.data || [])
+        }
       } else {
         showToast('Failed to load some hospital data', 'error')
       }
@@ -142,12 +203,14 @@ export default function AdminDashboard({ user, onLogout }) {
 
     const initLoad = async () => {
       try {
-        const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes] = await Promise.all([
+        const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes] = await Promise.all([
           apiFetch('/api/rooms'),
           apiFetch('/api/beds'),
           apiFetch('/api/patients'),
           apiFetch('/api/analytics/summary'),
           apiFetch('/api/auth/doctors/pending'),
+          apiFetch('/api/auth/staff'),
+          apiFetch('/api/allocations/history'),
         ])
 
         if (ignore) return
@@ -169,6 +232,16 @@ export default function AdminDashboard({ user, onLogout }) {
           if (doctorsRes && doctorsRes.ok) {
             const dJson = await doctorsRes.json()
             setPendingDoctors(dJson.data || [])
+          }
+
+          if (staffRes && staffRes.ok) {
+            const sJson = await staffRes.json()
+            setStaffList(sJson.data || [])
+          }
+
+          if (histRes && histRes.ok) {
+            const hJson = await histRes.json()
+            setAllocationHistory(hJson.data || [])
           }
         } else {
           showToast('Failed to load some hospital data', 'error')
@@ -494,6 +567,85 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   }
 
+  const handleCreateStaff = async (e) => {
+    e.preventDefault()
+    if (!staffFullName.trim()) {
+      showToast('Staff Full Name is required', 'error')
+      return
+    }
+    if (!staffUsername.trim()) {
+      showToast('Username is required', 'error')
+      return
+    }
+    const pwdErrors = validateStrongPassword(staffTempPassword)
+    if (pwdErrors.length > 0) {
+      showToast(`Temporary password must meet security policy: ${pwdErrors.join(', ')} (e.g. Reception@123)`, 'error')
+      return
+    }
+    if (staffRole === 'ROLE_DOCTOR' && !staffSpecialization.trim()) {
+      showToast('Specialization is required for doctor accounts', 'error')
+      return
+    }
+
+    setCreatingStaff(true)
+    try {
+      const payload = {
+        fullName: staffFullName.trim(),
+        username: staffUsername.trim(),
+        email: staffEmail.trim() || undefined,
+        role: staffRole,
+        temporaryPassword: staffTempPassword,
+        specialization: staffRole === 'ROLE_DOCTOR' ? staffSpecialization.trim() : undefined,
+        qualifications: staffQualifications.trim() || undefined,
+        medicalRegistrationNumber: staffMedRegNo.trim() || undefined,
+      }
+      const res = await apiFetch('/api/auth/staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast(`Staff account for "${staffFullName.trim()}" created successfully!`, 'success')
+        setStaffFullName('')
+        setStaffUsername('')
+        setStaffEmail('')
+        setStaffTempPassword('')
+        setStaffSpecialization('')
+        setStaffQualifications('')
+        setStaffMedRegNo('')
+        loadStaff()
+      } else {
+        showToast(data.message || 'Failed to create staff account', 'error')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setCreatingStaff(false)
+    }
+  }
+
+  const handleToggleStaffStatus = async (staffId, staffName) => {
+    setTogglingStaffId(staffId)
+    try {
+      const res = await apiFetch(`/api/auth/users/${staffId}/toggle-status`, {
+        method: 'PATCH',
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        const newStatus = data.data.enabled ? 'activated' : 'deactivated'
+        showToast(`Account for "${staffName}" has been ${newStatus}.`, 'info')
+        loadStaff()
+      } else {
+        showToast(data.message || 'Failed to toggle account status', 'error')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
+    } finally {
+      setTogglingStaffId(null)
+    }
+  }
+
   const handleLogoutClick = async () => {
     try {
       await fetch('/api/auth/logout', {
@@ -539,6 +691,14 @@ export default function AdminDashboard({ user, onLogout }) {
     doctors: {
       title: 'Doctor Registrations & Credentials Review',
       desc: 'Verify medical registrations and approve or reject doctor portal access',
+    },
+    staff: {
+      title: 'Hospital Staff & Roles Administration',
+      desc: 'Provision doctor and receptionist accounts with temporary passwords and control access status',
+    },
+    allocations: {
+      title: 'Bed Allocation Audit Trail & History',
+      desc: 'Comprehensive compliance log of all algorithm-recommended and manually overridden bed allocations',
     },
   }
 
@@ -605,6 +765,24 @@ export default function AdminDashboard({ user, onLogout }) {
                 {pendingDoctors.length}
               </span>
             )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'staff' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('staff')
+              loadStaff()
+            }}
+          >
+            <span>👥</span> Staff Accounts ({staffList.length})
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'allocations' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('allocations')
+              loadAllocationHistory()
+            }}
+          >
+            <span>📜</span> Allocation History ({allocationHistory.length})
           </button>
         </nav>
 
@@ -1718,6 +1896,296 @@ export default function AdminDashboard({ user, onLogout }) {
                   </table>
                 </div>
               )}
+            </div>
+          </section>
+        )}
+
+        {/* Tab 7: Staff Management */}
+        {activeTab === 'staff' && (
+          <section>
+            {/* Create Staff Form Card */}
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <div className="card-header">
+                <h3>Provision New Hospital Staff Account</h3>
+                <p className="form-desc">
+                  Create Doctor or Front-Desk Receptionist accounts with temporary passwords. Staff must update their password on first login.
+                </p>
+              </div>
+              <div className="card-body">
+                <form onSubmit={handleCreateStaff}>
+                  <div className="form-grid">
+                    <div className="form-group">
+                      <label className="form-label">Full Name *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. Dr. Emily Watson or Jane Reception"
+                        value={staffFullName}
+                        onChange={(e) => setStaffFullName(e.target.value)}
+                        required
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                        Staff member's actual display name (e.g. Dr. Emily Watson).
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Account Role *</label>
+                      <select
+                        className="form-select"
+                        value={staffRole}
+                        onChange={(e) => setStaffRole(e.target.value)}
+                      >
+                        <option value="ROLE_DOCTOR">Doctor (ROLE_DOCTOR)</option>
+                        <option value="ROLE_RECEPTIONIST">Receptionist (ROLE_RECEPTIONIST)</option>
+                      </select>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Username *</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. dr.emily or reception.front"
+                        value={staffUsername}
+                        onChange={(e) => setStaffUsername(e.target.value)}
+                        required
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                        Unique login ID used to sign into the system (e.g. dr.emily).
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Temporary Password (Strong Password Policy) *</label>
+                      <input
+                        type="password"
+                        className="form-input"
+                        placeholder="e.g. Reception@123"
+                        value={staffTempPassword}
+                        onChange={(e) => setStaffTempPassword(e.target.value)}
+                        required
+                      />
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                        Must have &ge; 6 characters, uppercase (A-Z), lowercase (a-z), number (0-9), and special character (e.g. Reception@123).
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label className="form-label">Email Address</label>
+                      <input
+                        type="email"
+                        className="form-input"
+                        placeholder="staff@smarthospital.org"
+                        value={staffEmail}
+                        onChange={(e) => setStaffEmail(e.target.value)}
+                      />
+                    </div>
+
+                    {staffRole === 'ROLE_DOCTOR' && (
+                      <>
+                        <div className="form-group">
+                          <label className="form-label">Specialization *</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. Cardiology, Neurology, ICU"
+                            value={staffSpecialization}
+                            onChange={(e) => setStaffSpecialization(e.target.value)}
+                            required={staffRole === 'ROLE_DOCTOR'}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Qualifications</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. MBBS, MD, FRCS"
+                            value={staffQualifications}
+                            onChange={(e) => setStaffQualifications(e.target.value)}
+                          />
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Medical Registration Number</label>
+                          <input
+                            type="text"
+                            className="form-input"
+                            placeholder="e.g. MED-REG-2026-99"
+                            value={staffMedRegNo}
+                            onChange={(e) => setStaffMedRegNo(e.target.value)}
+                          />
+                        </div>
+                      </>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: '1.25rem', display: 'flex', justifyContent: 'flex-end' }}>
+                    <button type="submit" className="btn btn-primary" disabled={creatingStaff}>
+                      {creatingStaff ? 'Creating Account...' : '&#43; Provision Staff Account'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+
+            {/* Staff Accounts Table */}
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Hospital Staff Roster ({staffList.length})</h3>
+                  <p className="form-desc">Manage system access and active privileges for doctors and receptionists</p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={loadStaff} disabled={loadingStaff}>
+                  &#8635; Refresh Roster
+                </button>
+              </div>
+              <div className="card-body">
+                {staffList.length === 0 ? (
+                  <p className="empty-text">No staff accounts found.</p>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Full Name</th>
+                          <th>Role</th>
+                          <th>Username</th>
+                          <th>Email / Reg #</th>
+                          <th>Created</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {staffList.map((st) => (
+                          <tr key={st.id}>
+                            <td><strong>{st.fullName}</strong></td>
+                            <td>
+                              <span
+                                className={`badge ${
+                                  st.role === 'ROLE_ADMIN'
+                                    ? 'badge-primary'
+                                    : st.role === 'ROLE_DOCTOR'
+                                    ? 'badge-success'
+                                    : 'badge-secondary'
+                                }`}
+                              >
+                                {st.role}
+                              </span>
+                            </td>
+                            <td><code>{st.username}</code></td>
+                            <td>
+                              <div>{st.email || '—'}</div>
+                              {st.medicalRegistrationNumber && (
+                                <small style={{ color: 'var(--text-secondary)' }}>Reg: {st.medicalRegistrationNumber}</small>
+                              )}
+                            </td>
+                            <td>{st.createdAt ? new Date(st.createdAt).toLocaleDateString() : 'N/A'}</td>
+                            <td>
+                              <span className={`badge ${st.enabled ? 'badge-success' : 'badge-danger'}`}>
+                                {st.enabled ? 'Active' : 'Disabled'}
+                              </span>
+                            </td>
+                            <td>
+                              {st.username.toLowerCase() !== user?.username?.toLowerCase() && (
+                                <button
+                                  className={`btn ${st.enabled ? 'btn-danger' : 'btn-primary'} btn-sm`}
+                                  onClick={() => handleToggleStaffStatus(st.id, st.fullName)}
+                                  disabled={togglingStaffId === st.id}
+                                >
+                                  {togglingStaffId === st.id ? 'Updating...' : st.enabled ? 'Deactivate' : 'Activate'}
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Tab 8: Bed Allocation Audit History */}
+        {activeTab === 'allocations' && (
+          <section>
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Bed Allocation &amp; Optimization Audit Trail ({allocationHistory.length})</h3>
+                  <p className="form-desc">
+                    Comprehensive compliance log tracking algorithmic bed assignments, clinical overrides, and stay lifecycles
+                  </p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={loadAllocationHistory} disabled={loadingHistory}>
+                  &#8635; Refresh Audit Trail
+                </button>
+              </div>
+              <div className="card-body">
+                {allocationHistory.length === 0 ? (
+                  <p className="empty-text">No bed allocation history recorded yet.</p>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Allocated At</th>
+                          <th>Bed &amp; Room</th>
+                          <th>Ward</th>
+                          <th>Patient</th>
+                          <th>Allocated By</th>
+                          <th>Method</th>
+                          <th>Override Reason</th>
+                          <th>Released At</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allocationHistory.map((h) => (
+                          <tr key={h.id}>
+                            <td>
+                              <strong>{h.allocatedAt ? new Date(h.allocatedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'N/A'}</strong>
+                            </td>
+                            <td>
+                              <strong>{h.bedNumber}</strong> (Room {h.roomNumber})
+                            </td>
+                            <td>{h.wardDepartment}</td>
+                            <td>
+                              <strong>{h.patientName}</strong>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{h.patientCode}</div>
+                            </td>
+                            <td><code>{h.allocatedBy}</code></td>
+                            <td>
+                              <span
+                                className={`badge ${
+                                  h.allocationType === 'RECOMMENDED' ? 'badge-success' : 'badge-warning'
+                                }`}
+                              >
+                                {h.allocationType}
+                              </span>
+                            </td>
+                            <td style={{ maxWidth: '200px', fontSize: '0.85rem' }}>
+                              {h.overrideReason || (h.allocationType === 'RECOMMENDED' ? 'Automated Match' : '—')}
+                            </td>
+                            <td>
+                              {h.releasedAt ? new Date(h.releasedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}
+                            </td>
+                            <td>
+                              <span className={`badge ${h.active ? 'badge-success' : 'badge-secondary'}`}>
+                                {h.active ? 'Active Stay' : 'Released'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </section>
         )}

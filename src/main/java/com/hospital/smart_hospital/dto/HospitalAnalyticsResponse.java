@@ -13,6 +13,12 @@ public class HospitalAnalyticsResponse {
     private int dischargedPatients;
     private double overallOccupancyRate;
     private double averageLengthOfStayHours;
+    private int totalDoctors;
+    private int totalReceptionists;
+    private int totalAppointments;
+    private int scheduledAppointments;
+    private int completedAppointments;
+    private int cancelledAppointments;
     private List<WardAnalyticsDto> wardBreakdown;
     private List<RoomTypeAnalyticsDto> roomTypeBreakdown;
 
@@ -32,6 +38,29 @@ public class HospitalAnalyticsResponse {
             List<WardAnalyticsDto> wardBreakdown,
             List<RoomTypeAnalyticsDto> roomTypeBreakdown
     ) {
+        this(totalRooms, totalBeds, availableBeds, occupiedBeds, maintenanceBeds, activePatients, dischargedPatients,
+                overallOccupancyRate, averageLengthOfStayHours, 0, 0, 0, 0, 0, 0, wardBreakdown, roomTypeBreakdown);
+    }
+
+    public HospitalAnalyticsResponse(
+            int totalRooms,
+            int totalBeds,
+            int availableBeds,
+            int occupiedBeds,
+            int maintenanceBeds,
+            int activePatients,
+            int dischargedPatients,
+            double overallOccupancyRate,
+            double averageLengthOfStayHours,
+            int totalDoctors,
+            int totalReceptionists,
+            int totalAppointments,
+            int scheduledAppointments,
+            int completedAppointments,
+            int cancelledAppointments,
+            List<WardAnalyticsDto> wardBreakdown,
+            List<RoomTypeAnalyticsDto> roomTypeBreakdown
+    ) {
         this.totalRooms = totalRooms;
         this.totalBeds = totalBeds;
         this.availableBeds = availableBeds;
@@ -41,6 +70,12 @@ public class HospitalAnalyticsResponse {
         this.dischargedPatients = dischargedPatients;
         this.overallOccupancyRate = overallOccupancyRate;
         this.averageLengthOfStayHours = averageLengthOfStayHours;
+        this.totalDoctors = totalDoctors;
+        this.totalReceptionists = totalReceptionists;
+        this.totalAppointments = totalAppointments;
+        this.scheduledAppointments = scheduledAppointments;
+        this.completedAppointments = completedAppointments;
+        this.cancelledAppointments = cancelledAppointments;
         this.wardBreakdown = wardBreakdown;
         this.roomTypeBreakdown = roomTypeBreakdown;
     }
@@ -115,6 +150,54 @@ public class HospitalAnalyticsResponse {
 
     public void setAverageLengthOfStayHours(double averageLengthOfStayHours) {
         this.averageLengthOfStayHours = averageLengthOfStayHours;
+    }
+
+    public int getTotalDoctors() {
+        return totalDoctors;
+    }
+
+    public void setTotalDoctors(int totalDoctors) {
+        this.totalDoctors = totalDoctors;
+    }
+
+    public int getTotalReceptionists() {
+        return totalReceptionists;
+    }
+
+    public void setTotalReceptionists(int totalReceptionists) {
+        this.totalReceptionists = totalReceptionists;
+    }
+
+    public int getTotalAppointments() {
+        return totalAppointments;
+    }
+
+    public void setTotalAppointments(int totalAppointments) {
+        this.totalAppointments = totalAppointments;
+    }
+
+    public int getScheduledAppointments() {
+        return scheduledAppointments;
+    }
+
+    public void setScheduledAppointments(int scheduledAppointments) {
+        this.scheduledAppointments = scheduledAppointments;
+    }
+
+    public int getCompletedAppointments() {
+        return completedAppointments;
+    }
+
+    public void setCompletedAppointments(int completedAppointments) {
+        this.completedAppointments = completedAppointments;
+    }
+
+    public int getCancelledAppointments() {
+        return cancelledAppointments;
+    }
+
+    public void setCancelledAppointments(int cancelledAppointments) {
+        this.cancelledAppointments = cancelledAppointments;
     }
 
     public List<WardAnalyticsDto> getWardBreakdown() {

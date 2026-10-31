@@ -13,6 +13,7 @@ import com.hospital.smart_hospital.model.Room;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
+import com.hospital.smart_hospital.service.BedAllocationHistoryService;
 import com.hospital.smart_hospital.service.BedService;
 import com.hospital.smart_hospital.service.impl.PatientServiceImpl;
 import java.time.LocalDateTime;
@@ -50,6 +51,9 @@ class PatientServiceTest {
 
     @Mock
     private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private BedAllocationHistoryService bedAllocationHistoryService;
 
     @InjectMocks
     private PatientServiceImpl patientService;

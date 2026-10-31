@@ -50,6 +50,9 @@ public class User {
     @Column(name = "medical_registration_number", length = 100)
     private String medicalRegistrationNumber;
 
+    @Column(name = "password_change_required", nullable = false)
+    private boolean passwordChangeRequired = false;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 
@@ -152,6 +155,14 @@ public class User {
 
     public void setMedicalRegistrationNumber(String medicalRegistrationNumber) {
         this.medicalRegistrationNumber = medicalRegistrationNumber;
+    }
+
+    public boolean isPasswordChangeRequired() {
+        return passwordChangeRequired;
+    }
+
+    public void setPasswordChangeRequired(boolean passwordChangeRequired) {
+        this.passwordChangeRequired = passwordChangeRequired;
     }
 
     public LocalDateTime getCreatedAt() {

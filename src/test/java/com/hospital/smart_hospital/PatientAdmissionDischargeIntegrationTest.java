@@ -55,6 +55,9 @@ class PatientAdmissionDischargeIntegrationTest {
     private AppointmentRepository appointmentRepository;
 
     @Autowired
+    private com.hospital.smart_hospital.repository.ConsultationRepository consultationRepository;
+
+    @Autowired
     private BedRepository bedRepository;
 
     @Autowired
@@ -68,6 +71,7 @@ class PatientAdmissionDischargeIntegrationTest {
                 .setControllerAdvice(globalExceptionHandler)
                 .build();
 
+        consultationRepository.deleteAll();
         appointmentRepository.deleteAll();
         patientRepository.deleteAll();
         bedRepository.deleteAll();
