@@ -306,9 +306,21 @@ export default function PatientDashboard({ user, onLogout }) {
                   <span className="value">{patientData.wardDepartment || 'General Medicine'}</span>
                 </div>
                 <div className="info-item">
+                  <span className="label">Daily Bed Rate</span>
+                  <span className="value highlight">
+                    {patientData.dailyRate ? `$${patientData.dailyRate} / day` : 'Standard Rate'}
+                  </span>
+                </div>
+                <div className="info-item">
                   <span className="label">Admission Date</span>
                   <span className="value">
                     {patientData.admissionDate ? new Date(patientData.admissionDate).toLocaleString() : 'N/A'}
+                  </span>
+                </div>
+                <div className="info-item">
+                  <span className="label">Expected Discharge</span>
+                  <span className="value" style={{ color: patientData.expectedDischargeDate ? '#10b981' : 'inherit' }}>
+                    {patientData.expectedDischargeDate ? new Date(patientData.expectedDischargeDate).toLocaleString() : 'Under Clinical Evaluation'}
                   </span>
                 </div>
                 <div className="info-item">

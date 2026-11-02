@@ -13,6 +13,7 @@ public class PatientResponse {
     private String diagnosis;
     private PatientStatus status;
     private LocalDateTime admissionDate;
+    private LocalDateTime expectedDischargeDate;
     private LocalDateTime dischargeDate;
 
     // Bed and room details
@@ -22,6 +23,7 @@ public class PatientResponse {
     private String roomNumber;
     private String roomType;
     private String wardDepartment;
+    private Double dailyRate;
 
     // Linked user account details
     private Long userId;
@@ -241,6 +243,22 @@ public class PatientResponse {
 
     public void setUsername(String username) {
         this.username = username;
+    }
+
+    public LocalDateTime getExpectedDischargeDate() {
+        return expectedDischargeDate;
+    }
+
+    public void setExpectedDischargeDate(LocalDateTime expectedDischargeDate) {
+        this.expectedDischargeDate = expectedDischargeDate;
+    }
+
+    public Double getDailyRate() {
+        return dailyRate;
+    }
+
+    public void setDailyRate(Double dailyRate) {
+        this.dailyRate = dailyRate;
     }
 }
 

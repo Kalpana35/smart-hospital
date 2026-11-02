@@ -1,5 +1,6 @@
 package com.hospital.smart_hospital;
 
+import com.hospital.smart_hospital.controller.CleaningController;
 import com.hospital.smart_hospital.controller.BedController;
 import com.hospital.smart_hospital.controller.PatientController;
 import com.hospital.smart_hospital.controller.RoomController;
@@ -9,6 +10,7 @@ import com.hospital.smart_hospital.dto.RoomRequest;
 import com.hospital.smart_hospital.exception.GlobalExceptionHandler;
 import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.repository.AppointmentRepository;
+import com.hospital.smart_hospital.repository.BedCleaningLogRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.RoomRepository;
@@ -46,6 +48,9 @@ class PatientAdmissionDischargeIntegrationTest {
     private PatientController patientController;
 
     @Autowired
+    private CleaningController cleaningController;
+
+    @Autowired
     private GlobalExceptionHandler globalExceptionHandler;
 
     @Autowired
@@ -58,6 +63,9 @@ class PatientAdmissionDischargeIntegrationTest {
     private com.hospital.smart_hospital.repository.ConsultationRepository consultationRepository;
 
     @Autowired
+    private BedCleaningLogRepository bedCleaningLogRepository;
+
+    @Autowired
     private BedRepository bedRepository;
 
     @Autowired
@@ -67,10 +75,11 @@ class PatientAdmissionDischargeIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(roomController, bedController, patientController)
+        mockMvc = MockMvcBuilders.standaloneSetup(roomController, bedController, patientController, cleaningController)
                 .setControllerAdvice(globalExceptionHandler)
                 .build();
 
+        bedCleaningLogRepository.deleteAll();
         consultationRepository.deleteAll();
         appointmentRepository.deleteAll();
         patientRepository.deleteAll();
@@ -179,7 +188,35 @@ class PatientAdmissionDischargeIntegrationTest {
                 .andExpect(jsonPath("$.data.status", is("DISCHARGED")))
                 .andExpect(jsonPath("$.data.dischargeDate", notNullValue()));
 
-        // 8. Verify Bed 1 is now AVAILABLE and room availableBeds dynamically increments back to 1
+        // 8. Verify Bed 1 is now DIRTY (for cleaning workflow) and room availableBeds remains 0
+        mockMvc.perform(get("/api/beds/" + bed1Id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status", is("DIRTY")));
+
+        mockMvc.perform(get("/api/rooms/" + roomId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.totalBeds", is(2)))
+                .andExpect(jsonPath("$.data.availableBeds", is(0)));
+
+        // 8b. Reject admission of a new patient to the DIRTY bed before cleaning
+        PatientAdmissionRequest dirtyBedPatient = new PatientAdmissionRequest(
+                "PAT-DIRTY", "Sam Clean", 29, "MALE", "Checkup", bed1Id
+        );
+        mockMvc.perform(post("/api/patients/admit")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(dirtyBedPatient)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message", containsString("is DIRTY and requires cleaning before admission")));
+
+        // 8c. Cleaner completes sanitization of Bed 1
+        mockMvc.perform(patch("/api/cleaning/" + bed1Id + "/complete")
+                        .param("cleanerName", "Staff Cleaner")
+                        .param("notes", "Sanitized, disinfected and fresh linens"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)))
+                .andExpect(jsonPath("$.data.status", is("AVAILABLE")));
+
+        // 8d. Verify Bed 1 is now AVAILABLE and room availableBeds dynamically increments back to 1
         mockMvc.perform(get("/api/beds/" + bed1Id))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status", is("AVAILABLE")));

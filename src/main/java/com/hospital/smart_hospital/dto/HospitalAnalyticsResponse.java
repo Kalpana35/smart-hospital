@@ -9,6 +9,10 @@ public class HospitalAnalyticsResponse {
     private int availableBeds;
     private int occupiedBeds;
     private int maintenanceBeds;
+    private int dirtyBeds;
+    private int totalDepartments;
+    private int cleaningQueueLength;
+    private double avgCleaningTurnaroundMinutes;
     private int activePatients;
     private int dischargedPatients;
     private double overallOccupancyRate;
@@ -214,5 +218,37 @@ public class HospitalAnalyticsResponse {
 
     public void setRoomTypeBreakdown(List<RoomTypeAnalyticsDto> roomTypeBreakdown) {
         this.roomTypeBreakdown = roomTypeBreakdown;
+    }
+
+    public int getDirtyBeds() {
+        return dirtyBeds;
+    }
+
+    public void setDirtyBeds(int dirtyBeds) {
+        this.dirtyBeds = dirtyBeds;
+    }
+
+    public int getTotalDepartments() {
+        return totalDepartments;
+    }
+
+    public void setTotalDepartments(int totalDepartments) {
+        this.totalDepartments = totalDepartments;
+    }
+
+    public int getCleaningQueueLength() {
+        return cleaningQueueLength;
+    }
+
+    public void setCleaningQueueLength(int cleaningQueueLength) {
+        this.cleaningQueueLength = cleaningQueueLength;
+    }
+
+    public double getAvgCleaningTurnaroundMinutes() {
+        return avgCleaningTurnaroundMinutes;
+    }
+
+    public void setAvgCleaningTurnaroundMinutes(double avgCleaningTurnaroundMinutes) {
+        this.avgCleaningTurnaroundMinutes = avgCleaningTurnaroundMinutes;
     }
 }

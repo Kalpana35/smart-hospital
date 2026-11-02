@@ -13,5 +13,9 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
     boolean existsByRoomNumberIgnoreCase(String roomNumber);
 
     boolean existsByRoomNumberIgnoreCaseAndIdNot(String roomNumber, Long id);
+
+    java.util.List<Room> findByDepartmentId(Long departmentId);
+
+    java.util.List<Room> findByWardDepartmentIgnoreCase(String wardDepartment);
 }
 

@@ -25,5 +25,9 @@ public interface PatientRepository extends JpaRepository<Patient, Long> {
     Optional<Patient> findByUserUsernameIgnoreCase(String username);
 
     boolean existsByUserId(Long userId);
+
+    List<Patient> findByStatusAndExpectedDischargeDateIsNotNull(PatientStatus status);
+
+    List<Patient> findByStatusAndExpectedDischargeDateBetween(PatientStatus status, java.time.LocalDateTime start, java.time.LocalDateTime end);
 }
 

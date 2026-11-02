@@ -7,7 +7,9 @@ import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.PatientStatus;
 import com.hospital.smart_hospital.model.Room;
 import com.hospital.smart_hospital.repository.AppointmentRepository;
+import com.hospital.smart_hospital.repository.BedCleaningLogRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
+import com.hospital.smart_hospital.repository.DepartmentRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.RoomRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
@@ -42,6 +44,12 @@ class AnalyticsServiceTest {
 
     @Mock
     private AppointmentRepository appointmentRepository;
+
+    @Mock
+    private DepartmentRepository departmentRepository;
+
+    @Mock
+    private BedCleaningLogRepository bedCleaningLogRepository;
 
     @InjectMocks
     private AnalyticsServiceImpl analyticsService;

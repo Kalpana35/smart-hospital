@@ -13,6 +13,8 @@ import com.hospital.smart_hospital.model.PatientStatus;
 import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.Room;
 import com.hospital.smart_hospital.model.User;
+import com.hospital.smart_hospital.model.BedCleaningLog;
+import com.hospital.smart_hospital.repository.BedCleaningLogRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
@@ -21,6 +23,7 @@ import com.hospital.smart_hospital.service.BedService;
 import com.hospital.smart_hospital.service.PatientService;
 import com.hospital.smart_hospital.util.PasswordValidator;
 import java.time.LocalDateTime;
+import java.util.Comparator;
 import java.util.List;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -38,6 +41,7 @@ public class PatientServiceImpl implements PatientService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final BedAllocationHistoryService bedAllocationHistoryService;
+    private final BedCleaningLogRepository bedCleaningLogRepository;
 
     public PatientServiceImpl(
             PatientRepository patientRepository,
@@ -45,7 +49,8 @@ public class PatientServiceImpl implements PatientService {
             BedService bedService,
             UserRepository userRepository,
             PasswordEncoder passwordEncoder,
-            BedAllocationHistoryService bedAllocationHistoryService
+            BedAllocationHistoryService bedAllocationHistoryService,
+            BedCleaningLogRepository bedCleaningLogRepository
     ) {
         this.patientRepository = patientRepository;
         this.bedRepository = bedRepository;
@@ -53,6 +58,7 @@ public class PatientServiceImpl implements PatientService {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.bedAllocationHistoryService = bedAllocationHistoryService;
+        this.bedCleaningLogRepository = bedCleaningLogRepository;
     }
 
     @Override
@@ -71,6 +77,9 @@ public class PatientServiceImpl implements PatientService {
         }
         if (bed.getStatus() == BedStatus.MAINTENANCE) {
             throw new BadRequestException("Cannot admit patient: Bed '" + bed.getBedNumber() + "' is currently under MAINTENANCE.");
+        }
+        if (bed.getStatus() == BedStatus.DIRTY) {
+            throw new BadRequestException("Cannot admit patient: Bed '" + bed.getBedNumber() + "' is DIRTY and requires cleaning before admission.");
         }
         if (bed.getStatus() != BedStatus.AVAILABLE) {
             throw new BadRequestException("Cannot admit patient: Bed '" + bed.getBedNumber() + "' is not AVAILABLE. Current status: " + bed.getStatus());
@@ -122,6 +131,11 @@ public class PatientServiceImpl implements PatientService {
                 request.getDiagnosis() != null ? request.getDiagnosis().trim() : null,
                 bed
         );
+        if (request.getExpectedDischargeDate() != null) {
+            patient.setExpectedDischargeDate(request.getExpectedDischargeDate());
+        } else {
+            patient.setExpectedDischargeDate(LocalDateTime.now().plusDays(3));
+        }
         if (portalUser != null) {
             patient.setUser(portalUser);
         }
@@ -158,11 +172,32 @@ public class PatientServiceImpl implements PatientService {
             throw new BadRequestException("Patient with ID " + patientId + " is already discharged.");
         }
 
-        // Release the bed back to AVAILABLE
+        // Release the bed to DIRTY status for cleaning inspection
         Bed bed = patient.getAssignedBed();
         if (bed != null) {
-            bed.setStatus(BedStatus.AVAILABLE);
+            bed.setStatus(BedStatus.DIRTY);
+            bed.setDirtySince(LocalDateTime.now());
+
+            int priority = 3;
+            String dept = bed.getRoom() != null && bed.getRoom().getWardDepartment() != null
+                    ? bed.getRoom().getWardDepartment().toUpperCase() : "";
+            if (dept.contains("ICU") || dept.contains("EMERG")) {
+                priority = 1;
+            } else if (dept.contains("SURG") || dept.contains("ISO")) {
+                priority = 2;
+            }
+            bed.setCleaningPriority(priority);
             bedRepository.save(bed);
+
+            BedCleaningLog cleaningLog = new BedCleaningLog(
+                    bed.getId(),
+                    bed.getBedNumber(),
+                    bed.getRoom() != null ? bed.getRoom().getId() : null,
+                    bed.getRoom() != null ? bed.getRoom().getRoomNumber() : null,
+                    bed.getRoom() != null ? bed.getRoom().getWardDepartment() : null,
+                    priority
+            );
+            bedCleaningLogRepository.save(cleaningLog);
         }
 
         patient.setStatus(PatientStatus.DISCHARGED);
@@ -248,6 +283,37 @@ public class PatientServiceImpl implements PatientService {
         return mapToResponse(updated);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public List<PatientResponse> getPredictiveDischarges() {
+        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime threshold = now.plusHours(48);
+        List<Patient> list = patientRepository.findByStatusAndExpectedDischargeDateIsNotNull(PatientStatus.ADMITTED);
+        return list.stream()
+                .filter(p -> p.getExpectedDischargeDate() != null && !p.getExpectedDischargeDate().isAfter(threshold))
+                .sorted(Comparator.comparing(Patient::getExpectedDischargeDate))
+                .map(this::mapToResponse)
+                .toList();
+    }
+
+    @Override
+    public PatientResponse updateExpectedDischargeDate(Long patientId, LocalDateTime expectedDate) {
+        if (patientId == null) {
+            throw new BadRequestException("Patient ID is required.");
+        }
+        if (expectedDate == null) {
+            throw new BadRequestException("Expected discharge date is required.");
+        }
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new ResourceNotFoundException("Patient not found with ID: " + patientId));
+        if (patient.getStatus() != PatientStatus.ADMITTED) {
+            throw new BadRequestException("Cannot update expected discharge date for a discharged patient.");
+        }
+        patient.setExpectedDischargeDate(expectedDate);
+        Patient updated = patientRepository.save(patient);
+        return mapToResponse(updated);
+    }
+
     private void validateAdmissionRequest(PatientAdmissionRequest request) {
         if (request == null) {
             throw new BadRequestException("Admission request body cannot be null.");
@@ -278,9 +344,11 @@ public class PatientServiceImpl implements PatientService {
         String roomType = null;
         String wardDepartment = null;
 
+        Double dailyRate = null;
         if (bed != null) {
             bedId = bed.getId();
             bedNumber = bed.getBedNumber();
+            dailyRate = bed.getDailyCharge();
             Room room = bed.getRoom();
             if (room != null) {
                 roomId = room.getId();
@@ -297,7 +365,7 @@ public class PatientServiceImpl implements PatientService {
             username = patient.getUser().getUsername();
         }
 
-        return new PatientResponse(
+        PatientResponse resp = new PatientResponse(
                 patient.getId(),
                 patient.getPatientCode(),
                 patient.getName(),
@@ -316,6 +384,9 @@ public class PatientServiceImpl implements PatientService {
                 userId,
                 username
         );
+        resp.setExpectedDischargeDate(patient.getExpectedDischargeDate());
+        resp.setDailyRate(dailyRate);
+        return resp;
     }
 }
 

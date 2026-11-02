@@ -59,6 +59,9 @@ public class Patient {
     @Column(name = "admission_date", nullable = false)
     private LocalDateTime admissionDate;
 
+    @Column(name = "expected_discharge_date")
+    private LocalDateTime expectedDischargeDate;
+
     @Column(name = "discharge_date")
     private LocalDateTime dischargeDate;
 
@@ -162,6 +165,14 @@ public class Patient {
 
     public void setAdmissionDate(LocalDateTime admissionDate) {
         this.admissionDate = admissionDate;
+    }
+
+    public LocalDateTime getExpectedDischargeDate() {
+        return expectedDischargeDate;
+    }
+
+    public void setExpectedDischargeDate(LocalDateTime expectedDischargeDate) {
+        this.expectedDischargeDate = expectedDischargeDate;
     }
 
     public LocalDateTime getDischargeDate() {

@@ -48,24 +48,34 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/auth/me").authenticated()
 
-                        // 3. Room & Bed management mutations (ADMIN only)
+                        // 3. Departments management
+                        .requestMatchers(HttpMethod.POST, "/api/departments/**").hasRole("ADMIN")
+                        .requestMatchers(HttpMethod.GET, "/api/departments/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
+
+                        // 4. Cleaning queue and management
+                        .requestMatchers(HttpMethod.PATCH, "/api/cleaning/**").hasAnyRole("ADMIN", "RECEPTIONIST")
+                        .requestMatchers(HttpMethod.GET, "/api/cleaning/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
+
+                        // 5. Room & Bed management mutations (ADMIN only)
                         .requestMatchers(HttpMethod.POST, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.PATCH, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
                         .requestMatchers(HttpMethod.DELETE, "/api/rooms/**", "/api/beds/**").hasRole("ADMIN")
 
-                        // 4. Room & Bed read operations (ADMIN, DOCTOR, RECEPTIONIST)
+                        // 6. Room & Bed read operations (ADMIN, DOCTOR, RECEPTIONIST)
                         .requestMatchers(HttpMethod.GET, "/api/rooms/**", "/api/beds/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
-                        // 5. Bed allocation recommendations and history (ADMIN, DOCTOR, RECEPTIONIST)
+                        // 7. Bed allocation recommendations and history (ADMIN, DOCTOR, RECEPTIONIST)
                         .requestMatchers("/api/allocations/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
-                        // 6. Patient admissions, discharges, and portal account provisioning
+                        // 8. Patient admissions, discharges, and portal account provisioning
                         .requestMatchers(HttpMethod.POST, "/api/patients/*/create-account").hasAnyRole("ADMIN", "RECEPTIONIST")
                         .requestMatchers(HttpMethod.POST, "/api/patients/admit", "/api/patients/*/discharge").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
+                        .requestMatchers(HttpMethod.PATCH, "/api/patients/*/expected-discharge").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
 
-                        // 7. Patient record querying
+                        // 9. Patient record querying
                         .requestMatchers(HttpMethod.GET, "/api/patients/me").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/patients/predictive-discharges").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
                         .requestMatchers(HttpMethod.GET, "/api/patients").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
                         .requestMatchers(HttpMethod.GET, "/api/patients/by-code/**").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST")
                         .requestMatchers(HttpMethod.GET, "/api/patients/*").hasAnyRole("ADMIN", "DOCTOR", "RECEPTIONIST", "PATIENT")

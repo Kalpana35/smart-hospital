@@ -10,6 +10,7 @@ import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.PatientStatus;
 import com.hospital.smart_hospital.model.Room;
+import com.hospital.smart_hospital.repository.BedCleaningLogRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
@@ -54,6 +55,9 @@ class PatientServiceTest {
 
     @Mock
     private BedAllocationHistoryService bedAllocationHistoryService;
+
+    @Mock
+    private BedCleaningLogRepository bedCleaningLogRepository;
 
     @InjectMocks
     private PatientServiceImpl patientService;
@@ -155,7 +159,26 @@ class PatientServiceTest {
     }
 
     @Test
-    @DisplayName("Should successfully discharge patient, record discharge date, and make bed AVAILABLE")
+    @DisplayName("Should reject admission when bed is DIRTY")
+    void testAdmitPatient_DirtyBedRejection() {
+        sampleBed.setStatus(BedStatus.DIRTY);
+        PatientAdmissionRequest request = new PatientAdmissionRequest(
+                "PAT-004", "David Gray", 45, "MALE", "Observation", 10L
+        );
+
+        when(patientRepository.existsByPatientCodeIgnoreCase("PAT-004")).thenReturn(false);
+        when(bedService.getBedEntity(10L)).thenReturn(sampleBed);
+
+        assertThatThrownBy(() -> patientService.admitPatient(request))
+                .isInstanceOf(BadRequestException.class)
+                .hasMessageContaining("is DIRTY and requires cleaning before admission");
+
+        verify(bedRepository, never()).save(any(Bed.class));
+        verify(patientRepository, never()).save(any(Patient.class));
+    }
+
+    @Test
+    @DisplayName("Should successfully discharge patient, record discharge date, and make bed DIRTY for cleaning")
     void testDischargePatient_Success() {
         sampleBed.setStatus(BedStatus.OCCUPIED);
         samplePatient.setStatus(PatientStatus.ADMITTED);
@@ -168,10 +191,11 @@ class PatientServiceTest {
 
         assertThat(response.getStatus()).isEqualTo(PatientStatus.DISCHARGED);
         assertThat(samplePatient.getDischargeDate()).isNotNull();
-        assertThat(sampleBed.getStatus()).isEqualTo(BedStatus.AVAILABLE);
+        assertThat(sampleBed.getStatus()).isEqualTo(BedStatus.DIRTY);
 
         verify(bedRepository).save(sampleBed);
         verify(patientRepository).save(samplePatient);
+        verify(bedCleaningLogRepository).save(any());
     }
 
     @Test

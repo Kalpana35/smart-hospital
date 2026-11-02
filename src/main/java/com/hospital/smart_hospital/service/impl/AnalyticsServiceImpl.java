@@ -5,13 +5,16 @@ import com.hospital.smart_hospital.dto.RoomTypeAnalyticsDto;
 import com.hospital.smart_hospital.dto.WardAnalyticsDto;
 import com.hospital.smart_hospital.model.AppointmentStatus;
 import com.hospital.smart_hospital.model.Bed;
+import com.hospital.smart_hospital.model.BedCleaningLog;
 import com.hospital.smart_hospital.model.BedStatus;
 import com.hospital.smart_hospital.model.Patient;
 import com.hospital.smart_hospital.model.PatientStatus;
 import com.hospital.smart_hospital.model.Role;
 import com.hospital.smart_hospital.model.Room;
 import com.hospital.smart_hospital.repository.AppointmentRepository;
+import com.hospital.smart_hospital.repository.BedCleaningLogRepository;
 import com.hospital.smart_hospital.repository.BedRepository;
+import com.hospital.smart_hospital.repository.DepartmentRepository;
 import com.hospital.smart_hospital.repository.PatientRepository;
 import com.hospital.smart_hospital.repository.RoomRepository;
 import com.hospital.smart_hospital.repository.UserRepository;
@@ -34,6 +37,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
     private final PatientRepository patientRepository;
     private final UserRepository userRepository;
     private final AppointmentRepository appointmentRepository;
+    private final DepartmentRepository departmentRepository;
+    private final BedCleaningLogRepository bedCleaningLogRepository;
 
     public AnalyticsServiceImpl(
             RoomRepository roomRepository,
@@ -42,11 +47,26 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             UserRepository userRepository,
             AppointmentRepository appointmentRepository
     ) {
+        this(roomRepository, bedRepository, patientRepository, userRepository, appointmentRepository, null, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public AnalyticsServiceImpl(
+            RoomRepository roomRepository,
+            BedRepository bedRepository,
+            PatientRepository patientRepository,
+            UserRepository userRepository,
+            AppointmentRepository appointmentRepository,
+            DepartmentRepository departmentRepository,
+            BedCleaningLogRepository bedCleaningLogRepository
+    ) {
         this.roomRepository = roomRepository;
         this.bedRepository = bedRepository;
         this.patientRepository = patientRepository;
         this.userRepository = userRepository;
         this.appointmentRepository = appointmentRepository;
+        this.departmentRepository = departmentRepository;
+        this.bedCleaningLogRepository = bedCleaningLogRepository;
     }
 
     @Override
@@ -61,6 +81,7 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         int availableBeds = 0;
         int occupiedBeds = 0;
         int maintenanceBeds = 0;
+        int dirtyBeds = 0;
 
         for (Bed b : beds) {
             if (b.getStatus() == BedStatus.AVAILABLE) {
@@ -69,6 +90,8 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 occupiedBeds++;
             } else if (b.getStatus() == BedStatus.MAINTENANCE) {
                 maintenanceBeds++;
+            } else if (b.getStatus() == BedStatus.DIRTY) {
+                dirtyBeds++;
             }
         }
 
@@ -118,9 +141,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
             int wAvail = (int) wardBeds.stream().filter(b -> b.getStatus() == BedStatus.AVAILABLE).count();
             int wOcc = (int) wardBeds.stream().filter(b -> b.getStatus() == BedStatus.OCCUPIED).count();
             int wMaint = (int) wardBeds.stream().filter(b -> b.getStatus() == BedStatus.MAINTENANCE).count();
+            int wDirty = (int) wardBeds.stream().filter(b -> b.getStatus() == BedStatus.DIRTY).count();
             double wRate = wTotalBeds > 0 ? Math.round((wOcc * 1000.0) / wTotalBeds) / 10.0 : 0.0;
 
-            wardList.add(new WardAnalyticsDto(wardName, wardRooms.size(), wTotalBeds, wAvail, wOcc, wMaint, wRate));
+            wardList.add(new WardAnalyticsDto(wardName, wardRooms.size(), wTotalBeds, wAvail, wOcc, wMaint, wDirty, wRate));
         }
         wardList.sort(Comparator.comparing(WardAnalyticsDto::getWardName, String.CASE_INSENSITIVE_ORDER));
 
@@ -152,7 +176,20 @@ public class AnalyticsServiceImpl implements AnalyticsService {
         int completedAppointments = (int) appointmentRepository.countByStatus(AppointmentStatus.COMPLETED);
         int cancelledAppointments = (int) appointmentRepository.countByStatus(AppointmentStatus.CANCELLED);
 
-        return new HospitalAnalyticsResponse(
+        int totalDepartments = departmentRepository != null ? (int) departmentRepository.count() : wardList.size();
+        int queueLength = bedCleaningLogRepository != null
+                ? bedCleaningLogRepository.findByStatusInOrderByPriorityAscDirtyAtAsc(List.of("DIRTY", "IN_PROGRESS")).size()
+                : dirtyBeds;
+        double avgTurnaround = 25.0;
+        if (bedCleaningLogRepository != null) {
+            avgTurnaround = bedCleaningLogRepository.findTop50ByStatusOrderByCleanedAtDesc("COMPLETED").stream()
+                    .filter(l -> l.getDurationMinutes() != null && l.getDurationMinutes() > 0)
+                    .mapToLong(BedCleaningLog::getDurationMinutes)
+                    .average()
+                    .orElse(25.0);
+        }
+
+        HospitalAnalyticsResponse resp = new HospitalAnalyticsResponse(
                 totalRooms,
                 totalBeds,
                 availableBeds,
@@ -171,5 +208,10 @@ public class AnalyticsServiceImpl implements AnalyticsService {
                 wardList,
                 roomTypeList
         );
+        resp.setDirtyBeds(dirtyBeds);
+        resp.setTotalDepartments(totalDepartments > 0 ? totalDepartments : 5);
+        resp.setCleaningQueueLength(queueLength);
+        resp.setAvgCleaningTurnaroundMinutes(Math.round(avgTurnaround * 10.0) / 10.0);
+        return resp;
     }
 }

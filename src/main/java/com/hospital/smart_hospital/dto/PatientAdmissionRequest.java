@@ -19,12 +19,18 @@ public class PatientAdmissionRequest {
     // Allocation tracking & override reason
     private AllocationType allocationType = AllocationType.RECOMMENDED;
     private String overrideReason;
+    private java.time.LocalDateTime expectedDischargeDate;
 
     public PatientAdmissionRequest() {
     }
 
     public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId) {
         this(patientCode, name, age, gender, diagnosis, bedId, false, null, null, AllocationType.RECOMMENDED, null);
+    }
+
+    public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId, java.time.LocalDateTime expectedDischargeDate) {
+        this(patientCode, name, age, gender, diagnosis, bedId);
+        this.expectedDischargeDate = expectedDischargeDate;
     }
 
     public PatientAdmissionRequest(String patientCode, String name, Integer age, String gender, String diagnosis, Long bedId, Boolean createPortalAccount, String portalUsername, String portalPassword) {
@@ -131,6 +137,14 @@ public class PatientAdmissionRequest {
 
     public void setOverrideReason(String overrideReason) {
         this.overrideReason = overrideReason;
+    }
+
+    public java.time.LocalDateTime getExpectedDischargeDate() {
+        return expectedDischargeDate;
+    }
+
+    public void setExpectedDischargeDate(java.time.LocalDateTime expectedDischargeDate) {
+        this.expectedDischargeDate = expectedDischargeDate;
     }
 }
 

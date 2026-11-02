@@ -391,6 +391,12 @@
   border-color: var(--status-maintenance-border);
 }
 
+.bed-chip.status-DIRTY {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
 /* Cards & Forms */
 .card {
   background: var(--bg-card);
@@ -522,6 +528,11 @@
 .status-badge.MAINTENANCE {
   background: var(--status-maintenance-bg);
   color: #92400e;
+}
+
+.status-badge.DIRTY {
+  background: #fef3c7;
+  color: #b45309;
 }
 
 .status-badge.ADMITTED {
@@ -661,5 +672,131 @@
   .col-2, .col-4, .col-6 {
     flex: 0 0 100%;
   }
+}
+
+/* Department Capacity & Cleaning Styles */
+.department-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.department-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.dept-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.75rem;
+}
+
+.dept-code-tag {
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: var(--radius-sm);
+}
+
+.dept-stats-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem 0;
+  border-top: 1px solid #f1f5f9;
+  border-bottom: 1px solid #f1f5f9;
+  margin: 0.75rem 0;
+  font-size: 0.85rem;
+}
+
+.dept-stat-item {
+  text-align: center;
+}
+
+.dept-stat-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dept-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+}
+
+.priority-pill {
+  display: inline-block;
+  padding: 0.2rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.priority-pill.priority-1 {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: 1px solid #fca5a5;
+}
+
+.priority-pill.priority-2 {
+  background: #ffedd5;
+  color: #c2410c;
+  border: 1px solid #fdba74;
+}
+
+.priority-pill.priority-3 {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-clinical {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.badge-icu {
+  background: #e0e7ff;
+  color: #3730a3;
+  border: 1px solid #c7d2fe;
+}
+
+.badge-iso {
+  background: #fae8ff;
+  color: #86198f;
+  border: 1px solid #f5d0fe;
+}
+
+.badge-overflow {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.badge-budget-yes {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-budget-no {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
 }
 

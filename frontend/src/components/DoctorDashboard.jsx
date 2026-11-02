@@ -18,6 +18,8 @@ export default function DoctorDashboard({ user, onLogout }) {
   const [selectedPatient, setSelectedPatient] = useState(null)
   const [loadingPatientDetail, setLoadingPatientDetail] = useState(false)
   const [dischargingPatient, setDischargingPatient] = useState(false)
+  const [expectedDischargeInput, setExpectedDischargeInput] = useState('')
+  const [updatingExpectedDischarge, setUpdatingExpectedDischarge] = useState(false)
 
   // Bed Availability Matrix filter state
   const [matrixWardFilter, setMatrixWardFilter] = useState('')
@@ -235,6 +237,11 @@ export default function DoctorDashboard({ user, onLogout }) {
       const data = await res.json()
       if (res.ok && data.success && data.data) {
         setSelectedPatient(data.data)
+        if (data.data.expectedDischargeDate) {
+          setExpectedDischargeInput(data.data.expectedDischargeDate.slice(0, 16))
+        } else {
+          setExpectedDischargeInput('')
+        }
       } else {
         showToast(data.message || 'Failed to retrieve patient details', 'error')
       }
@@ -242,6 +249,45 @@ export default function DoctorDashboard({ user, onLogout }) {
       showToast(err.message || 'Error fetching patient details', 'error')
     } finally {
       setLoadingPatientDetail(false)
+    }
+  }
+
+  // Update expected discharge target date (PATCH /api/patients/{id}/expected-discharge)
+  const handleUpdateExpectedDischarge = async (e) => {
+    if (e) e.preventDefault()
+    if (!selectedPatient) return
+    if (selectedPatient.status !== 'ADMITTED') {
+      showToast('Expected discharge date can only be updated for actively admitted patients.', 'error')
+      return
+    }
+    if (!expectedDischargeInput) {
+      showToast('Please select a target discharge date and time.', 'error')
+      return
+    }
+
+    setUpdatingExpectedDischarge(true)
+    try {
+      const res = await apiFetch(`/api/patients/${selectedPatient.id}/expected-discharge`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          expectedDischargeDate: expectedDischargeInput,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast('Expected discharge date updated successfully!', 'success')
+        setSelectedPatient(data.data)
+        loadAllData()
+      } else {
+        showToast(data.message || 'Failed to update expected discharge date', 'error')
+      }
+    } catch (err) {
+      showToast(err.message || 'Error updating expected discharge date', 'error')
+    } finally {
+      setUpdatingExpectedDischarge(false)
     }
   }
 
@@ -712,6 +758,7 @@ export default function DoctorDashboard({ user, onLogout }) {
                       <th>Age / Gender</th>
                       <th>Diagnosis</th>
                       <th>Admission Date</th>
+                      <th>Expected Discharge</th>
                       <th>Assigned Bed</th>
                       <th>Room & Type</th>
                       <th>Ward</th>
@@ -722,7 +769,7 @@ export default function DoctorDashboard({ user, onLogout }) {
                   <tbody>
                     {filteredPatients.length === 0 ? (
                       <tr>
-                        <td colSpan="10" className="text-center text-muted" style={{ padding: '2rem' }}>
+                        <td colSpan="11" className="text-center text-muted" style={{ padding: '2rem' }}>
                           {searchQuery || wardFilter || statusFilter !== 'ALL'
                             ? 'No patients match your search or filter criteria.'
                             : 'No patient records found in the hospital registry.'}
@@ -749,6 +796,15 @@ export default function DoctorDashboard({ user, onLogout }) {
                               <span title={patient.diagnosis}>{patient.diagnosis || '—'}</span>
                             </td>
                             <td>{formatDate(patient.admissionDate)}</td>
+                            <td>
+                              {patient.expectedDischargeDate ? (
+                                <span style={{ color: '#059669', fontWeight: 600, fontSize: '0.85rem' }}>
+                                  ⏳ {formatDate(patient.expectedDischargeDate)}
+                                </span>
+                              ) : (
+                                <span className="text-muted" style={{ fontSize: '0.85rem' }}>—</span>
+                              )}
+                            </td>
                             <td>
                               {patient.bedNumber ? (
                                 <span className="status-badge OCCUPIED">
@@ -1322,6 +1378,17 @@ export default function DoctorDashboard({ user, onLogout }) {
                     <span className="detail-label">Admission Timestamp</span>
                     <span className="detail-value">{formatDate(selectedPatient.admissionDate)}</span>
                   </div>
+                  <div className="detail-item">
+                    <span className="detail-label">Expected Discharge Target</span>
+                    <span
+                      className="detail-value"
+                      style={{ color: selectedPatient.expectedDischargeDate ? '#059669' : 'inherit' }}
+                    >
+                      {selectedPatient.expectedDischargeDate
+                        ? `⏳ ${formatDate(selectedPatient.expectedDischargeDate)}`
+                        : 'Under Clinical Evaluation'}
+                    </span>
+                  </div>
                   {selectedPatient.dischargeDate && (
                     <div className="detail-item">
                       <span className="detail-label">Discharge Timestamp</span>
@@ -1358,6 +1425,65 @@ export default function DoctorDashboard({ user, onLogout }) {
                 ) : (
                   <p className="text-muted">No bed currently assigned to this patient.</p>
                 )}
+              </div>
+
+              {/* Expected Discharge Planning Section */}
+              <div>
+                <div className="detail-section-title">Expected Discharge Management</div>
+                <div className="discharge-target-card">
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      flexWrap: 'wrap',
+                      gap: '0.5rem',
+                    }}
+                  >
+                    <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                      Current Target:
+                    </span>
+                    <strong
+                      style={{
+                        fontSize: '0.9rem',
+                        color: selectedPatient.expectedDischargeDate ? '#059669' : 'var(--text-primary)',
+                      }}
+                    >
+                      {selectedPatient.expectedDischargeDate
+                        ? formatDate(selectedPatient.expectedDischargeDate)
+                        : 'Not Scheduled / Under Evaluation'}
+                    </strong>
+                  </div>
+                  {selectedPatient.status === 'ADMITTED' ? (
+                    <form onSubmit={handleUpdateExpectedDischarge} className="discharge-target-form">
+                      <input
+                        type="datetime-local"
+                        value={expectedDischargeInput}
+                        onChange={(e) => setExpectedDischargeInput(e.target.value)}
+                        className="discharge-target-input"
+                        required
+                        aria-label="Expected discharge date"
+                      />
+                      <button
+                        type="submit"
+                        className="btn btn-primary btn-sm"
+                        disabled={updatingExpectedDischarge}
+                      >
+                        {updatingExpectedDischarge ? 'Updating...' : 'Update Target Date'}
+                      </button>
+                    </form>
+                  ) : (
+                    <div
+                      style={{
+                        fontSize: '0.85rem',
+                        color: 'var(--text-secondary)',
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      Patient is {selectedPatient.status.toLowerCase()}. Expected discharge target can only be modified while admitted.
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

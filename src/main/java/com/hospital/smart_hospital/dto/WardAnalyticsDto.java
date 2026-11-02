@@ -8,6 +8,7 @@ public class WardAnalyticsDto {
     private int availableBeds;
     private int occupiedBeds;
     private int maintenanceBeds;
+    private int dirtyBeds;
     private double occupancyRate;
 
     public WardAnalyticsDto() {
@@ -22,12 +23,26 @@ public class WardAnalyticsDto {
             int maintenanceBeds,
             double occupancyRate
     ) {
+        this(wardName, totalRooms, totalBeds, availableBeds, occupiedBeds, maintenanceBeds, 0, occupancyRate);
+    }
+
+    public WardAnalyticsDto(
+            String wardName,
+            int totalRooms,
+            int totalBeds,
+            int availableBeds,
+            int occupiedBeds,
+            int maintenanceBeds,
+            int dirtyBeds,
+            double occupancyRate
+    ) {
         this.wardName = wardName;
         this.totalRooms = totalRooms;
         this.totalBeds = totalBeds;
         this.availableBeds = availableBeds;
         this.occupiedBeds = occupiedBeds;
         this.maintenanceBeds = maintenanceBeds;
+        this.dirtyBeds = dirtyBeds;
         this.occupancyRate = occupancyRate;
     }
 
@@ -77,6 +92,14 @@ public class WardAnalyticsDto {
 
     public void setMaintenanceBeds(int maintenanceBeds) {
         this.maintenanceBeds = maintenanceBeds;
+    }
+
+    public int getDirtyBeds() {
+        return dirtyBeds;
+    }
+
+    public void setDirtyBeds(int dirtyBeds) {
+        this.dirtyBeds = dirtyBeds;
     }
 
     public double getOccupancyRate() {

@@ -101,5 +101,25 @@ public class PatientController {
         PatientResponse patient = patientService.getPatientByCode(patientCode);
         return ResponseEntity.ok(ApiResponse.ok("Patient retrieved successfully", patient));
     }
+
+    @GetMapping("/predictive-discharges")
+    public ResponseEntity<ApiResponse<List<PatientResponse>>> getPredictiveDischarges() {
+        List<PatientResponse> list = patientService.getPredictiveDischarges();
+        return ResponseEntity.ok(ApiResponse.ok("Predictive discharges retrieved successfully", list));
+    }
+
+    @org.springframework.web.bind.annotation.PatchMapping("/{id}/expected-discharge")
+    public ResponseEntity<ApiResponse<PatientResponse>> updateExpectedDischargeDate(
+            @PathVariable Long id,
+            @RequestBody java.util.Map<String, String> body
+    ) {
+        String dateStr = body != null ? body.get("expectedDischargeDate") : null;
+        if (dateStr == null || dateStr.trim().isEmpty()) {
+            throw new com.hospital.smart_hospital.exception.BadRequestException("expectedDischargeDate is required.");
+        }
+        java.time.LocalDateTime expectedDate = java.time.LocalDateTime.parse(dateStr.trim());
+        PatientResponse patient = patientService.updateExpectedDischargeDate(id, expectedDate);
+        return ResponseEntity.ok(ApiResponse.ok("Expected discharge date updated successfully", patient));
+    }
 }
 

@@ -20,5 +20,9 @@ public interface PatientService {
     PatientResponse getMyPatientRecord(String username);
 
     PatientResponse createPatientPortalAccount(Long patientId, String username, String password);
+
+    List<PatientResponse> getPredictiveDischarges();
+
+    PatientResponse updateExpectedDischargeDate(Long patientId, java.time.LocalDateTime expectedDate);
 }
 

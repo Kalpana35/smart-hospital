@@ -20,16 +20,36 @@ export default function ReceptionistDashboard({ user, onLogout }) {
   const [selectedBedId, setSelectedBedId] = useState('')
   const [allocationMode, setAllocationMode] = useState('recommend') // 'recommend' | 'manual'
   const [overrideReason, setOverrideReason] = useState('')
+  const [expectedDischargeDate, setExpectedDischargeDate] = useState('')
+  const [preferredMaxDailyBudget, setPreferredMaxDailyBudget] = useState('')
   const [createAccountOnAdmit, setCreateAccountOnAdmit] = useState(false)
   const [portalUsername, setPortalUsername] = useState('')
   const [portalPassword, setPortalPassword] = useState('')
   const [admittingPatient, setAdmittingPatient] = useState(false)
 
-  // Recommendation engine states
-  const [recRoomType, setRecRoomType] = useState('ICU')
+  // Smart recommendation criteria states
+  const [recRoomType, setRecRoomType] = useState('GENERAL')
   const [recWard, setRecWard] = useState('')
+  const [recBudget, setRecBudget] = useState('')
+  const [recIcu, setRecIcu] = useState(false)
+  const [recIsolation, setRecIsolation] = useState(false)
+  const [recEmergency, setRecEmergency] = useState(false)
   const [recommendations, setRecommendations] = useState(null)
   const [loadingRecs, setLoadingRecs] = useState(false)
+
+  // Cleaning Queue states
+  const [cleaningQueue, setCleaningQueue] = useState([])
+  const [cleaningStats, setCleaningStats] = useState(null)
+  const [loadingCleaning, setLoadingCleaning] = useState(false)
+  const [assigningBedId, setAssigningBedId] = useState(null)
+  const [cleanerAssignName, setCleanerAssignName] = useState('')
+  const [completingBedId, setCompletingBedId] = useState(null)
+  const [completionNotes, setCompletionNotes] = useState('')
+  const [cleanerCompleteName, setCleanerCompleteName] = useState('')
+
+  // Predictive Discharges state
+  const [predictiveDischarges, setPredictiveDischarges] = useState([])
+  const [loadingPredictive, setLoadingPredictive] = useState(false)
 
   // Discharges search & filter
   const [dischargeSearch, setDischargeSearch] = useState('')
@@ -71,6 +91,43 @@ export default function ReceptionistDashboard({ user, onLogout }) {
     [onLogout]
   )
 
+  const loadCleaningData = useCallback(async () => {
+    try {
+      setLoadingCleaning(true)
+      const [qRes, sRes] = await Promise.all([
+        apiFetch('/api/cleaning/queue'),
+        apiFetch('/api/cleaning/statistics'),
+      ])
+      if (qRes.ok) {
+        const qJson = await qRes.json()
+        setCleaningQueue(qJson.data || [])
+      }
+      if (sRes.ok) {
+        const sJson = await sRes.json()
+        setCleaningStats(sJson.data || null)
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingCleaning(false)
+    }
+  }, [apiFetch])
+
+  const loadPredictiveDischarges = useCallback(async () => {
+    try {
+      setLoadingPredictive(true)
+      const res = await apiFetch('/api/allocations/predictive-discharges')
+      if (res.ok) {
+        const json = await res.json()
+        setPredictiveDischarges(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingPredictive(false)
+    }
+  }, [apiFetch])
+
   const loadAllData = useCallback(async () => {
     try {
       setLoading(true)
@@ -109,8 +166,10 @@ export default function ReceptionistDashboard({ user, onLogout }) {
       showToast(err.message || 'Error communicating with server', 'error')
     } finally {
       setLoading(false)
+      loadCleaningData()
+      loadPredictiveDischarges()
     }
-  }, [apiFetch, bookingDoctorId, showToast])
+  }, [apiFetch, bookingDoctorId, loadCleaningData, loadPredictiveDischarges, showToast])
 
   useEffect(() => {
     let ignore = false
@@ -152,6 +211,8 @@ export default function ReceptionistDashboard({ user, onLogout }) {
       } finally {
         if (!ignore) {
           setLoading(false)
+          loadCleaningData()
+          loadPredictiveDischarges()
         }
       }
     }
@@ -159,17 +220,21 @@ export default function ReceptionistDashboard({ user, onLogout }) {
     return () => {
       ignore = true
     }
-  }, [apiFetch, showToast])
+  }, [apiFetch, loadCleaningData, loadPredictiveDischarges, showToast])
 
-  // Get Bed Recommendations
+  // Get Bed Recommendations (Smart Bed Allocation Optimization)
   const handleGetRecommendations = async (e) => {
-    e.preventDefault()
+    if (e) e.preventDefault()
     setLoadingRecs(true)
     try {
+      const budgetVal = recBudget ? parseFloat(recBudget) : (preferredMaxDailyBudget ? parseFloat(preferredMaxDailyBudget) : undefined)
       const payload = {
-        roomType: recRoomType,
+        roomType: recRoomType || 'GENERAL',
         wardDepartment: recWard.trim() || undefined,
-        limit: 5,
+        requiresIcuMonitoring: recIcu,
+        requiresIsolation: recIsolation,
+        preferredMaxDailyBudget: budgetVal && budgetVal > 0 ? budgetVal : undefined,
+        emergency: recEmergency,
       }
       const res = await apiFetch('/api/allocations/recommend', {
         method: 'POST',
@@ -225,6 +290,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
         bedId: parseInt(selectedBedId, 10),
         allocationType: allocationMode === 'manual' ? 'MANUAL_OVERRIDE' : 'RECOMMENDED',
         overrideReason: allocationMode === 'manual' ? overrideReason.trim() : undefined,
+        expectedDischargeDate: expectedDischargeDate || undefined,
         createPortalAccount: createAccountOnAdmit,
         portalUsername: createAccountOnAdmit && portalUsername.trim() ? portalUsername.trim() : undefined,
         portalPassword: createAccountOnAdmit && portalPassword ? portalPassword : undefined,
@@ -245,11 +311,16 @@ export default function ReceptionistDashboard({ user, onLogout }) {
         setPatientDiagnosis('')
         setSelectedBedId('')
         setOverrideReason('')
+        setExpectedDischargeDate('')
+        setPreferredMaxDailyBudget('')
+        setRecBudget('')
         setCreateAccountOnAdmit(false)
         setPortalUsername('')
         setPortalPassword('')
         setRecommendations(null)
         loadAllData()
+        loadCleaningData()
+        loadPredictiveDischarges()
         setActiveTab('overview')
       } else {
         showToast(data.message || 'Failed to admit patient', 'error')
@@ -263,7 +334,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
 
   // Handle Discharge
   const handleDischargePatient = async (patientId, patientNameStr) => {
-    if (!window.confirm(`Confirm discharge for patient "${patientNameStr}"? Assigned bed will be released.`)) {
+    if (!window.confirm(`Confirm discharge for patient "${patientNameStr}"? Assigned bed will transition to DIRTY status for sanitization.`)) {
       return
     }
     setDischargingId(patientId)
@@ -273,8 +344,10 @@ export default function ReceptionistDashboard({ user, onLogout }) {
       })
       const data = await res.json()
       if (res.ok && data.success) {
-        showToast(`Patient "${patientNameStr}" successfully discharged!`, 'success')
+        showToast(`Patient "${patientNameStr}" successfully discharged! Bed queued for sanitization.`, 'success')
         loadAllData()
+        loadCleaningData()
+        loadPredictiveDischarges()
       } else {
         showToast(data.message || 'Failed to discharge patient', 'error')
       }
@@ -282,6 +355,63 @@ export default function ReceptionistDashboard({ user, onLogout }) {
       showToast(err.message, 'error')
     } finally {
       setDischargingId(null)
+    }
+  }
+
+  // Handle Cleaner Assignment
+  const handleAssignCleaner = async (e) => {
+    e.preventDefault()
+    if (!assigningBedId || !cleanerAssignName.trim()) {
+      showToast('Cleaner staff name is required', 'error')
+      return
+    }
+    try {
+      const res = await apiFetch(`/api/cleaning/${assigningBedId}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleanerName: cleanerAssignName.trim() }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast(`Bed successfully assigned to staff '${cleanerAssignName.trim()}'`, 'success')
+        setAssigningBedId(null)
+        setCleanerAssignName('')
+        loadCleaningData()
+        loadAllData()
+      } else {
+        showToast(data.message || 'Failed to assign cleaner', 'error')
+      }
+    } catch (err) {
+      showToast(err.message || 'Error assigning cleaner', 'error')
+    }
+  }
+
+  // Handle Cleaning Completion
+  const handleCompleteCleaning = async (e) => {
+    e.preventDefault()
+    if (!completingBedId) return
+    try {
+      const res = await apiFetch(`/api/cleaning/${completingBedId}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          cleanerName: cleanerCompleteName.trim() || undefined,
+          notes: completionNotes.trim() || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (res.ok && data.success) {
+        showToast('Sanitization verified! Bed returned to AVAILABLE pool.', 'success')
+        setCompletingBedId(null)
+        setCompletionNotes('')
+        setCleanerCompleteName('')
+        loadCleaningData()
+        loadAllData()
+      } else {
+        showToast(data.message || 'Failed to complete cleaning', 'error')
+      }
+    } catch (err) {
+      showToast(err.message || 'Error completing sanitization', 'error')
     }
   }
 
@@ -365,6 +495,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
   const totalBeds = beds.length
   const availableBeds = beds.filter((b) => b.status === 'AVAILABLE')
   const occupiedBeds = beds.filter((b) => b.status === 'OCCUPIED')
+  const dirtyBeds = beds.filter((b) => b.status === 'DIRTY')
   const maintenanceBeds = beds.filter((b) => b.status === 'MAINTENANCE')
   const admittedPatients = patients.filter((p) => p.status === 'ADMITTED')
 
@@ -479,6 +610,54 @@ export default function ReceptionistDashboard({ user, onLogout }) {
           Bed Availability Matrix
         </button>
         <button
+          className={`tab-btn ${activeTab === 'cleaning' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('cleaning')
+            loadCleaningData()
+          }}
+        >
+          🧹 Cleaning Queue
+          {dirtyBeds.length > 0 && (
+            <span
+              style={{
+                backgroundColor: '#f59e0b',
+                color: '#ffffff',
+                marginLeft: '6px',
+                padding: '2px 7px',
+                borderRadius: '10px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {dirtyBeds.length}
+            </span>
+          )}
+        </button>
+        <button
+          className={`tab-btn ${activeTab === 'predictive' ? 'active' : ''}`}
+          onClick={() => {
+            setActiveTab('predictive')
+            loadPredictiveDischarges()
+          }}
+        >
+          ⏳ Predictive Discharges
+          {predictiveDischarges.length > 0 && (
+            <span
+              style={{
+                backgroundColor: '#059669',
+                color: '#ffffff',
+                marginLeft: '6px',
+                padding: '2px 7px',
+                borderRadius: '10px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+              }}
+            >
+              {predictiveDischarges.length}
+            </span>
+          )}
+        </button>
+        <button
           className={`tab-btn ${activeTab === 'appointments' ? 'active' : ''}`}
           onClick={() => setActiveTab('appointments')}
         >
@@ -516,7 +695,12 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                     <span className="kpi-subtext">Active inpatients</span>
                   </div>
                   <div className="kpi-card">
-                    <span className="kpi-label">Maintenance / Cleaning</span>
+                    <span className="kpi-label">Dirty / Sanitizing</span>
+                    <span className="kpi-value" style={{ color: '#d97706' }}>{dirtyBeds.length}</span>
+                    <span className="kpi-subtext">Awaiting terminal cleaning</span>
+                  </div>
+                  <div className="kpi-card">
+                    <span className="kpi-label">Maintenance Beds</span>
                     <span className="kpi-value text-secondary">{maintenanceBeds.length}</span>
                     <span className="kpi-subtext">Temporarily offline</span>
                   </div>
@@ -623,77 +807,178 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                     {allocationMode === 'recommend' && (
                       <div style={{ background: '#f8fafc', padding: '1.25rem', borderRadius: 'var(--radius-md)', marginBottom: '1.5rem', border: '1px solid var(--border-color)' }}>
                         <h4 style={{ margin: '0 0 1rem 0', fontSize: '1rem', color: 'var(--text-primary)' }}>Find Optimized Bed Recommendation</h4>
-                        <form onSubmit={handleGetRecommendations} style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                          <div style={{ flex: 1, minWidth: '180px' }}>
-                            <label className="form-label">Required Room Type</label>
-                            <select
-                              className="form-select"
-                              value={recRoomType}
-                              onChange={(e) => setRecRoomType(e.target.value)}
-                            >
-                              <option value="ICU">ICU (Intensive Care)</option>
-                              <option value="GENERAL">General Ward</option>
-                              <option value="PRIVATE">Private Suite</option>
-                              <option value="EMERGENCY">Emergency Triage</option>
-                              <option value="STANDARD">Standard</option>
-                            </select>
+                        <form onSubmit={handleGetRecommendations} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '180px' }}>
+                              <label className="form-label">Required Room Type</label>
+                              <select
+                                className="form-select"
+                                value={recRoomType}
+                                onChange={(e) => setRecRoomType(e.target.value)}
+                              >
+                                <option value="GENERAL">General Ward</option>
+                                <option value="ICU">ICU (Intensive Care)</option>
+                                <option value="PRIVATE">Private Suite</option>
+                                <option value="EMERGENCY">Emergency Triage</option>
+                                <option value="STANDARD">Standard</option>
+                              </select>
+                            </div>
+                            <div style={{ flex: 1, minWidth: '180px' }}>
+                              <label className="form-label">Department / Ward (Optional)</label>
+                              <input
+                                type="text"
+                                className="form-input"
+                                placeholder="e.g. Critical Care, Cardiology"
+                                value={recWard}
+                                onChange={(e) => setRecWard(e.target.value)}
+                              />
+                            </div>
+                            <div style={{ flex: 1, minWidth: '180px' }}>
+                              <label className="form-label">Preferred Daily Budget ($/day)</label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="10"
+                                className="form-input"
+                                placeholder="e.g. 500"
+                                value={recBudget}
+                                onChange={(e) => {
+                                  setRecBudget(e.target.value)
+                                  setPreferredMaxDailyBudget(e.target.value)
+                                }}
+                              />
+                            </div>
                           </div>
-                          <div style={{ flex: 1, minWidth: '180px' }}>
-                            <label className="form-label">Department / Ward (Optional)</label>
-                            <input
-                              type="text"
-                              className="form-input"
-                              placeholder="e.g. Critical Care, Cardiology"
-                              value={recWard}
-                              onChange={(e) => setRecWard(e.target.value)}
-                            />
+
+                          <div style={{ display: 'flex', gap: '1.25rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 500 }}>
+                              <input
+                                type="checkbox"
+                                checked={recIcu}
+                                onChange={(e) => setRecIcu(e.target.checked)}
+                              />
+                              Requires ICU Monitoring
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 500 }}>
+                              <input
+                                type="checkbox"
+                                checked={recIsolation}
+                                onChange={(e) => setRecIsolation(e.target.checked)}
+                              />
+                              Requires Isolation
+                            </label>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.875rem', cursor: 'pointer', fontWeight: 500 }}>
+                              <input
+                                type="checkbox"
+                                checked={recEmergency}
+                                onChange={(e) => setRecEmergency(e.target.checked)}
+                              />
+                              Emergency Priority
+                            </label>
+                            <button type="submit" className="btn-primary" style={{ marginLeft: 'auto' }} disabled={loadingRecs}>
+                              {loadingRecs ? 'Analyzing Suitability...' : '⚡ Search Recommended Beds'}
+                            </button>
                           </div>
-                          <button type="submit" className="btn-primary" disabled={loadingRecs}>
-                            {loadingRecs ? 'Analyzing...' : 'Search Recommended Beds'}
-                          </button>
                         </form>
 
                         {/* Recommendation Results */}
                         {recommendations && (
                           <div style={{ marginTop: '1.25rem' }}>
-                            <h5 style={{ margin: '0 0 0.5rem 0' }}>Available Bed Recommendations:</h5>
+                            <h5 style={{ margin: '0 0 0.75rem 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span>Available Bed Recommendations ({recommendations.length}):</span>
+                              <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', fontWeight: 400 }}>
+                                Sorted by clinical match score &amp; budget alignment
+                              </span>
+                            </h5>
                             {recommendations.length === 0 ? (
-                              <p className="empty-text">No available beds found for this room type. Switch to manual selection or choose another ward.</p>
+                              <p className="empty-text">No available beds found matching criteria. Try adjusting budget, ward, or room type.</p>
                             ) : (
-                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '0.75rem' }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem' }}>
                                 {recommendations.map((rec) => (
                                   <div
                                     key={rec.bedId}
                                     style={{
                                       border: selectedBedId === String(rec.bedId) ? '2px solid var(--primary)' : '1px solid var(--border-color)',
                                       background: selectedBedId === String(rec.bedId) ? '#eff6ff' : '#ffffff',
-                                      padding: '0.85rem',
+                                      padding: '1rem',
                                       borderRadius: 'var(--radius-md)',
                                       cursor: 'pointer',
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      gap: '0.5rem',
+                                      boxShadow: selectedBedId === String(rec.bedId) ? '0 0 0 1px var(--primary)' : 'none',
+                                      transition: 'border-color 0.15s ease, box-shadow 0.15s ease',
                                     }}
                                     onClick={() => setSelectedBedId(String(rec.bedId))}
                                   >
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                      <strong>{rec.bedNumber}</strong>
-                                      <span className="badge badge-success">Match: {Math.round(rec.matchScore)}%</span>
+                                      <strong style={{ fontSize: '1.1rem', color: 'var(--text-primary)' }}>{rec.bedNumber}</strong>
+                                      <span className="badge badge-success" style={{ fontWeight: 700 }}>
+                                        Match: {Math.round(rec.matchScore)}%
+                                      </span>
                                     </div>
-                                    <p style={{ margin: '0.35rem 0', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                                      Room: {rec.roomNumber} ({rec.wardDepartment})
+
+                                    <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                                      Room {rec.roomNumber} &bull; {rec.wardDepartment} ({rec.roomType})
+                                    </div>
+
+                                    {/* Daily Rate and Budget Tag */}
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                                      <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>
+                                        ${rec.dailyRate != null ? rec.dailyRate.toFixed(2) : '—'} <span style={{ fontSize: '0.75rem', fontWeight: 400, color: '#64748b' }}>/ day</span>
+                                      </span>
+                                      {rec.withinBudget === true && (
+                                        <span className="badge" style={{ backgroundColor: '#10b981', color: '#ffffff', fontSize: '0.72rem', fontWeight: 600 }}>
+                                          ✓ Within Budget
+                                        </span>
+                                      )}
+                                      {rec.withinBudget === false && (
+                                        <span className="badge" style={{ backgroundColor: '#f59e0b', color: '#ffffff', fontSize: '0.72rem', fontWeight: 600 }}>
+                                          ⚠ Exceeds Budget
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Clinical Tags & Overflow */}
+                                    <div style={{ display: 'flex', gap: '0.35rem', flexWrap: 'wrap' }}>
+                                      {rec.isOverflow && (
+                                        <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#b91c1c', border: '1px solid #fca5a5', fontSize: '0.72rem', fontWeight: 600 }}>
+                                          ⚡ Dept Overflow
+                                        </span>
+                                      )}
+                                      {rec.hasIcuMonitoring && (
+                                        <span className="badge" style={{ backgroundColor: '#e0f2fe', color: '#0369a1', border: '1px solid #bae6fd', fontSize: '0.72rem' }}>
+                                          🏥 ICU Monitored
+                                        </span>
+                                      )}
+                                      {rec.hasIsolation && (
+                                        <span className="badge" style={{ backgroundColor: '#f3e8ff', color: '#6b21a8', border: '1px solid #e9d5ff', fontSize: '0.72rem' }}>
+                                          🛡 Isolation
+                                        </span>
+                                      )}
+                                      {rec.features && (
+                                        <span className="badge" style={{ backgroundColor: '#f1f5f9', color: '#475569', fontSize: '0.72rem' }}>
+                                          {rec.features}
+                                        </span>
+                                      )}
+                                    </div>
+
+                                    {/* Clinical Reason */}
+                                    <p style={{ margin: '0.2rem 0 0 0', fontSize: '0.78rem', color: '#166534', lineHeight: 1.35 }}>
+                                      {rec.matchReason || rec.reason || 'Optimally matched to patient requirements.'}
                                     </p>
-                                    <p style={{ margin: 0, fontSize: '0.75rem', color: '#166534' }}>
-                                      {rec.reason || 'Optimally matched'}
-                                    </p>
+
                                     <button
                                       type="button"
-                                      className="btn-secondary btn-sm"
-                                      style={{ marginTop: '0.5rem', width: '100%' }}
+                                      className={selectedBedId === String(rec.bedId) ? 'btn-primary btn-sm' : 'btn-secondary btn-sm'}
+                                      style={{ marginTop: '0.35rem', width: '100%' }}
                                       onClick={(e) => {
                                         e.stopPropagation()
                                         setSelectedBedId(String(rec.bedId))
-                                        showToast(`Bed ${rec.bedNumber} selected!`, 'info')
+                                        showToast(`Bed ${rec.bedNumber} assigned to admission form!`, 'info')
                                       }}
                                     >
-                                      {selectedBedId === String(rec.bedId) ? '&#10003; Selected' : 'Choose Bed'}
+                                      {selectedBedId === String(rec.bedId) ? '✓ Bed Selected' : 'Choose Bed'}
                                     </button>
                                   </div>
                                 ))}
@@ -791,6 +1076,40 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                           />
                         </div>
 
+                        <div className="form-group">
+                          <label className="form-label">Expected Discharge Target Date &amp; Time</label>
+                          <input
+                            type="datetime-local"
+                            className="form-input"
+                            value={expectedDischargeDate}
+                            onChange={(e) => setExpectedDischargeDate(e.target.value)}
+                            aria-label="Expected discharge target"
+                          />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Used for predictive capacity tracking and bed turnover forecasting.
+                          </span>
+                        </div>
+
+                        <div className="form-group">
+                          <label className="form-label">Preferred Maximum Daily Budget ($/day)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="10"
+                            className="form-input"
+                            placeholder="e.g. 500"
+                            value={preferredMaxDailyBudget}
+                            onChange={(e) => {
+                              setPreferredMaxDailyBudget(e.target.value)
+                              setRecBudget(e.target.value)
+                            }}
+                            aria-label="Preferred maximum daily budget"
+                          />
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                            Financial alignment limit for bed and room selection.
+                          </span>
+                        </div>
+
                         <div className="form-group" style={{ gridColumn: 'span 2' }}>
                           <label className="form-label">Select Available Bed *</label>
                           <select
@@ -802,7 +1121,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                             <option value="">-- Choose an Available Bed ({availableBeds.length} available) --</option>
                             {availableBeds.map((b) => (
                               <option key={b.id} value={b.id}>
-                                {b.bedNumber} &mdash; Room {b.roomNumber} ({b.wardDepartment || 'General'} - {b.roomType || 'Standard'})
+                                {b.bedNumber} &mdash; Room {b.roomNumber} ({b.wardDepartment || 'General'} - {b.roomType || 'Standard'}) {b.dailyCharge != null ? `[$${b.dailyCharge}/day]` : ''}
                               </option>
                             ))}
                           </select>
@@ -854,7 +1173,13 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                           onClick={() => {
                             setPatientCode('')
                             setPatientName('')
+                            setPatientAge('')
+                            setPatientDiagnosis('')
                             setSelectedBedId('')
+                            setOverrideReason('')
+                            setExpectedDischargeDate('')
+                            setPreferredMaxDailyBudget('')
+                            setRecBudget('')
                             setRecommendations(null)
                           }}
                         >
@@ -907,6 +1232,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                               <th>Room / Ward</th>
                               <th>Admission Diagnosis</th>
                               <th>Admission Timestamp</th>
+                              <th>Expected Discharge</th>
                               <th>Action</th>
                             </tr>
                           </thead>
@@ -920,6 +1246,15 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                                 <td>{p.roomNumber || 'N/A'} ({p.wardDepartment || 'General'})</td>
                                 <td>{p.diagnosis || 'Observation'}</td>
                                 <td>{p.admissionDate ? new Date(p.admissionDate).toLocaleString() : 'N/A'}</td>
+                                <td>
+                                  {p.expectedDischargeDate ? (
+                                    <span style={{ color: '#059669', fontWeight: 600 }}>
+                                      ⏳ {new Date(p.expectedDischargeDate).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted">—</span>
+                                  )}
+                                </td>
                                 <td>
                                   <button
                                     className="btn-danger btn-sm"
@@ -948,7 +1283,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                     <div>
                       <h3>Hospital Bed Availability Matrix</h3>
                       <p style={{ color: 'var(--text-secondary)', margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
-                        Live view of bed occupancies and ward capacities
+                        Live view of bed occupancies, daily charges, sanitization status, and ward capacities
                       </p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
@@ -970,6 +1305,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                         <option value="">All Bed Statuses</option>
                         <option value="AVAILABLE">AVAILABLE ({availableBeds.length})</option>
                         <option value="OCCUPIED">OCCUPIED ({occupiedBeds.length})</option>
+                        <option value="DIRTY">DIRTY / SANITIZING ({dirtyBeds.length})</option>
                         <option value="MAINTENANCE">MAINTENANCE ({maintenanceBeds.length})</option>
                       </select>
                     </div>
@@ -986,6 +1322,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                               <th>Room Number</th>
                               <th>Room Type</th>
                               <th>Ward / Department</th>
+                              <th>Daily Rate</th>
                               <th>Current Status</th>
                             </tr>
                           </thead>
@@ -996,6 +1333,7 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                                 <td>Room {b.roomNumber}</td>
                                 <td>{b.roomType || 'Standard'}</td>
                                 <td>{b.wardDepartment || 'General'}</td>
+                                <td>{b.dailyCharge != null ? `$${b.dailyCharge}/day` : 'Standard'}</td>
                                 <td>
                                   <span
                                     className={`badge ${
@@ -1003,11 +1341,248 @@ export default function ReceptionistDashboard({ user, onLogout }) {
                                         ? 'badge-success'
                                         : b.status === 'OCCUPIED'
                                         ? 'badge-warning'
+                                        : b.status === 'DIRTY'
+                                        ? 'status-DIRTY'
                                         : 'badge-secondary'
                                     }`}
                                   >
                                     {b.status}
                                   </span>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: CLEANING QUEUE & SANITIZATION */}
+            {activeTab === 'cleaning' && (
+              <div className="cleaning-tab">
+                <div className="card" style={{ marginBottom: '1.5rem' }}>
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h3>Bed Sanitization &amp; Turnaround Performance</h3>
+                      <p style={{ color: 'var(--text-secondary)', margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+                        Real-time turnaround metrics for hospital bed cleaning, terminal disinfection, and turnover
+                      </p>
+                    </div>
+                    <button className="btn-secondary btn-sm" onClick={loadCleaningData} disabled={loadingCleaning}>
+                      🔄 Refresh Queue
+                    </button>
+                  </div>
+                  <div className="card-body">
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                      <div style={{ padding: '1rem', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>DIRTY BEDS IN QUEUE</div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#92400e' }}>
+                          {cleaningStats ? cleaningStats.totalDirtyBeds : dirtyBeds.length}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 600 }}>IN-PROGRESS SANITIZATION</div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1e3a8a' }}>
+                          {cleaningStats ? cleaningStats.inProgressCount : cleaningQueue.filter((q) => q.status === 'IN_PROGRESS').length}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>COMPLETED TODAY</div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#14532d' }}>
+                          {cleaningStats ? cleaningStats.completedToday : 0}
+                        </div>
+                      </div>
+                      <div style={{ padding: '1rem', background: '#faf5ff', borderRadius: '8px', border: '1px solid #f3e8ff' }}>
+                        <div style={{ fontSize: '0.8rem', color: '#6b21a8', fontWeight: 600 }}>AVG TURNAROUND TIME</div>
+                        <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#581c87' }}>
+                          {cleaningStats && cleaningStats.averageTurnaroundMinutes > 0
+                            ? `${cleaningStats.averageTurnaroundMinutes} mins`
+                            : '20 mins (Est.)'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="card">
+                  <div className="card-header">
+                    <h3>Live Bed Cleaning Queue ({cleaningQueue.length})</h3>
+                    <p style={{ color: 'var(--text-secondary)', margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+                      Prioritized by clinical acuity: ICU/Emergency (P1), Surgical/Isolation (P2), General Ward (P3). Beds remain strictly unavailable for admission until sanitization is completed.
+                    </p>
+                  </div>
+                  <div className="card-body">
+                    {cleaningQueue.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
+                        <p style={{ fontWeight: 600, color: '#1e293b' }}>All Hospital Beds Cleaned &amp; Sanitized</p>
+                        <p style={{ fontSize: '0.85rem' }}>No dirty beds currently awaiting terminal cleaning in the turnaround queue.</p>
+                      </div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Priority</th>
+                              <th>Bed Number</th>
+                              <th>Room</th>
+                              <th>Department</th>
+                              <th>Dirty Since</th>
+                              <th>Status</th>
+                              <th>Assigned Cleaner</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {cleaningQueue.map((item) => (
+                              <tr key={item.id}>
+                                <td>
+                                  <span className={`priority-pill priority-${item.priority || 3}`}>
+                                    {item.priority === 1 ? '🚨 Urgent (P1)' : item.priority === 2 ? '⚠️ High (P2)' : 'Standard (P3)'}
+                                  </span>
+                                </td>
+                                <td><strong>{item.bedNumber}</strong></td>
+                                <td>Room {item.roomNumber}</td>
+                                <td>{item.departmentName}</td>
+                                <td>
+                                  {item.dirtyAt
+                                    ? new Date(item.dirtyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                                    : 'Recently'}
+                                </td>
+                                <td>
+                                  <span
+                                    className={`badge ${
+                                      item.status === 'AVAILABLE'
+                                        ? 'badge-success'
+                                        : item.status === 'IN_PROGRESS'
+                                        ? 'badge-info'
+                                        : 'status-DIRTY'
+                                    }`}
+                                  >
+                                    {item.status}
+                                  </span>
+                                </td>
+                                <td>
+                                  {item.assignedTo ? (
+                                    <strong>👤 {item.assignedTo}</strong>
+                                  ) : (
+                                    <span style={{ color: '#94a3b8' }}>Unassigned</span>
+                                  )}
+                                </td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                    <button
+                                      type="button"
+                                      className="btn-secondary btn-sm"
+                                      onClick={() => {
+                                        setAssigningBedId(item.bedId)
+                                        setCleanerAssignName(item.assignedTo || '')
+                                      }}
+                                    >
+                                      Assign Cleaner
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="btn-primary btn-sm"
+                                      onClick={() => {
+                                        setCompletingBedId(item.bedId)
+                                        setCompletionNotes('Deep sanitized with hospital disinfectant and fresh linens.')
+                                      }}
+                                    >
+                                      Complete Cleaning
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: PREDICTIVE DISCHARGES */}
+            {activeTab === 'predictive' && (
+              <div className="predictive-tab">
+                <div className="card">
+                  <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <div>
+                      <h3>Predictive Discharges &amp; Pending Available Beds ({predictiveDischarges.length})</h3>
+                      <p style={{ color: 'var(--text-secondary)', margin: '0.25rem 0 0 0', fontSize: '0.85rem' }}>
+                        Inpatients with expected discharge targets tracked within 48 hours for advance capacity planning.
+                      </p>
+                    </div>
+                    <button className="btn-secondary btn-sm" onClick={loadPredictiveDischarges} disabled={loadingPredictive}>
+                      🔄 Refresh List
+                    </button>
+                  </div>
+                  <div className="card-body">
+                    {/* Invariant Alert Callout */}
+                    <div className="override-notice" style={{ background: '#eff6ff', borderColor: '#bfdbfe', borderLeftColor: '#3b82f6', color: '#1e40af', marginBottom: '1.25rem' }}>
+                      <strong style={{ color: '#1d4ed8' }}>Hospital Bed Allocation Invariant</strong>
+                      <span>
+                        Strict Rule: Beds with upcoming predictive discharges remain <strong>OCCUPIED</strong> and cannot be allocated to incoming patients until the patient is officially discharged and the bed completes sanitization.
+                      </span>
+                    </div>
+
+                    {predictiveDischarges.length === 0 ? (
+                      <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                        <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                        <p style={{ fontWeight: 600, color: '#1e293b' }}>No Upcoming Expected Discharges</p>
+                        <p style={{ fontSize: '0.85rem' }}>No active inpatients are scheduled for discharge in the next 48 hours.</p>
+                      </div>
+                    ) : (
+                      <div className="table-responsive">
+                        <table className="data-table">
+                          <thead>
+                            <tr>
+                              <th>Patient MRN</th>
+                              <th>Patient Name</th>
+                              <th>Department / Ward</th>
+                              <th>Room &amp; Bed</th>
+                              <th>Daily Rate</th>
+                              <th>Admission Date</th>
+                              <th>Expected Discharge Target</th>
+                              <th>Predictive Status</th>
+                              <th>Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {predictiveDischarges.map((p) => (
+                              <tr key={p.id}>
+                                <td><strong>{p.patientCode}</strong></td>
+                                <td><strong>{p.name}</strong></td>
+                                <td>{p.wardDepartment || 'General'}</td>
+                                <td>
+                                  <strong>Bed {p.bedNumber}</strong> (Room {p.roomNumber})
+                                </td>
+                                <td>{p.dailyRate ? `$${p.dailyRate}/day` : 'Standard'}</td>
+                                <td>{p.admissionDate ? new Date(p.admissionDate).toLocaleDateString() : 'N/A'}</td>
+                                <td>
+                                  <span style={{ color: '#059669', fontWeight: 600 }}>
+                                    ⏳ {p.expectedDischargeDate ? new Date(p.expectedDischargeDate).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Target not set'}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="badge badge-warning" title="Bed cannot be allocated until patient is discharged and sanitization is completed">
+                                    PENDING_AVAILABLE (Occupied)
+                                  </span>
+                                </td>
+                                <td>
+                                  <button
+                                    type="button"
+                                    className="btn-danger btn-sm"
+                                    onClick={() => handleDischargePatient(p.id, p.name)}
+                                    disabled={dischargingId === p.id}
+                                  >
+                                    {dischargingId === p.id ? 'Releasing...' : 'Discharge'}
+                                  </button>
                                 </td>
                               </tr>
                             ))}
@@ -1213,6 +1788,88 @@ export default function ReceptionistDashboard({ user, onLogout }) {
           </>
         )}
       </main>
+
+      {/* Assign Cleaner Modal */}
+      {assigningBedId && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Assign Sanitation Staff to Bed</h3>
+              <button type="button" className="btn-close" onClick={() => setAssigningBedId(null)}>×</button>
+            </div>
+            <form onSubmit={handleAssignCleaner}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Staff Cleaner Name or ID *</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Cleaner Alice / Staff ID #504"
+                    value={cleanerAssignName}
+                    onChange={(e) => setCleanerAssignName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setAssigningBedId(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Confirm Assignment
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Cleaning Modal */}
+      {completingBedId && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Confirm Bed Cleaning &amp; Sanitization</h3>
+              <button type="button" className="btn-close" onClick={() => setCompletingBedId(null)}>×</button>
+            </div>
+            <form onSubmit={handleCompleteCleaning}>
+              <div className="modal-body">
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                  Verifying completion will mark the bed as clean and immediately return it to the <strong>AVAILABLE</strong> pool for patient intake.
+                </p>
+                <div className="form-group" style={{ marginBottom: '1rem' }}>
+                  <label className="form-label">Cleaner Staff Name (Optional verification)</label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="e.g. Staff Cleaner Alice"
+                    value={cleanerCompleteName}
+                    onChange={(e) => setCleanerCompleteName(e.target.value)}
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Sanitization Notes / Protocols Followed</label>
+                  <textarea
+                    className="form-input"
+                    rows="3"
+                    placeholder="e.g. Terminal disinfection performed, UV sterilized, fresh linens replaced."
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setCompletingBedId(null)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  Verify &amp; Mark Available
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

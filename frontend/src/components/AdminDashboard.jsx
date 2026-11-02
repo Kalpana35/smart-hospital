@@ -78,6 +78,23 @@ export default function AdminDashboard({ user, onLogout }) {
   const [allocationHistory, setAllocationHistory] = useState([])
   const [loadingHistory, setLoadingHistory] = useState(false)
 
+  // Department Capacity state
+  const [departments, setDepartments] = useState([])
+  const [loadingDepartments, setLoadingDepartments] = useState(false)
+
+  // Cleaning & Sanitization state
+  const [cleaningQueue, setCleaningQueue] = useState([])
+  const [cleaningStats, setCleaningStats] = useState(null)
+  const [loadingCleaning, setLoadingCleaning] = useState(false)
+  const [assigningBedId, setAssigningBedId] = useState(null)
+  const [cleanerAssignName, setCleanerAssignName] = useState('')
+  const [completingBedId, setCompletingBedId] = useState(null)
+  const [completionNotes, setCompletionNotes] = useState('')
+
+  // Predictive Discharges state
+  const [predictiveDischarges, setPredictiveDischarges] = useState([])
+  const [loadingPredictive, setLoadingPredictive] = useState(false)
+
   const showToast = useCallback((message, type = 'info') => {
     const id = Date.now() + Math.random()
     setToasts((prev) => [...prev, { id, message, type }])
@@ -147,10 +164,111 @@ export default function AdminDashboard({ user, onLogout }) {
     }
   }, [apiFetch])
 
+  const loadDepartments = useCallback(async () => {
+    try {
+      setLoadingDepartments(true)
+      const res = await apiFetch('/api/departments')
+      if (res.ok) {
+        const json = await res.json()
+        setDepartments(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingDepartments(false)
+    }
+  }, [apiFetch])
+
+  const loadCleaningData = useCallback(async () => {
+    try {
+      setLoadingCleaning(true)
+      const [qRes, sRes] = await Promise.all([
+        apiFetch('/api/cleaning/queue'),
+        apiFetch('/api/cleaning/statistics'),
+      ])
+      if (qRes.ok) {
+        const qJson = await qRes.json()
+        setCleaningQueue(qJson.data || [])
+      }
+      if (sRes.ok) {
+        const sJson = await sRes.json()
+        setCleaningStats(sJson.data || null)
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingCleaning(false)
+    }
+  }, [apiFetch])
+
+  const loadPredictiveDischarges = useCallback(async () => {
+    try {
+      setLoadingPredictive(true)
+      const res = await apiFetch('/api/allocations/predictive-discharges')
+      if (res.ok) {
+        const json = await res.json()
+        setPredictiveDischarges(json.data || [])
+      }
+    } catch {
+      // non-blocking
+    } finally {
+      setLoadingPredictive(false)
+    }
+  }, [apiFetch])
+
+  const handleAssignCleaner = async (e) => {
+    e.preventDefault()
+    if (!assigningBedId || !cleanerAssignName.trim()) {
+      showToast('Cleaner name or staff ID is required', 'error')
+      return
+    }
+    try {
+      const res = await apiFetch(`/api/cleaning/${assigningBedId}/assign`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleanerName: cleanerAssignName.trim() }),
+      })
+      const json = await res.json()
+      if (res.ok && json.success) {
+        showToast('Cleaner successfully assigned to bed!', 'success')
+        setAssigningBedId(null)
+        setCleanerAssignName('')
+        loadAllData()
+      } else {
+        showToast(json.message || 'Failed to assign cleaner', 'error')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
+  const handleCompleteCleaning = async (e) => {
+    e.preventDefault()
+    if (!completingBedId) return
+    try {
+      const res = await apiFetch(`/api/cleaning/${completingBedId}/complete`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cleanerName: 'Assigned Cleaner', notes: completionNotes.trim() || undefined }),
+      })
+      const json = await res.json()
+      if (res.ok && json.success) {
+        showToast(json.message || 'Bed sanitized and ready for patient admission!', 'success')
+        setCompletingBedId(null)
+        setCompletionNotes('')
+        loadAllData()
+      } else {
+        showToast(json.message || 'Failed to complete cleaning', 'error')
+      }
+    } catch (err) {
+      showToast(err.message, 'error')
+    }
+  }
+
   const loadAllData = useCallback(async () => {
     try {
       setLoading(true)
-      const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes] = await Promise.all([
+      const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes, deptRes, cleanQRes, cleanSRes, predRes] = await Promise.all([
         apiFetch('/api/rooms'),
         apiFetch('/api/beds'),
         apiFetch('/api/patients'),
@@ -158,6 +276,10 @@ export default function AdminDashboard({ user, onLogout }) {
         apiFetch('/api/auth/doctors/pending'),
         apiFetch('/api/auth/staff'),
         apiFetch('/api/allocations/history'),
+        apiFetch('/api/departments'),
+        apiFetch('/api/cleaning/queue'),
+        apiFetch('/api/cleaning/statistics'),
+        apiFetch('/api/allocations/predictive-discharges'),
       ])
 
       if (roomsRes.ok && bedsRes.ok && patientsRes.ok) {
@@ -188,6 +310,26 @@ export default function AdminDashboard({ user, onLogout }) {
           const hJson = await histRes.json()
           setAllocationHistory(hJson.data || [])
         }
+
+        if (deptRes && deptRes.ok) {
+          const deptJson = await deptRes.json()
+          setDepartments(deptJson.data || [])
+        }
+
+        if (cleanQRes && cleanQRes.ok) {
+          const cqJson = await cleanQRes.json()
+          setCleaningQueue(cqJson.data || [])
+        }
+
+        if (cleanSRes && cleanSRes.ok) {
+          const csJson = await cleanSRes.json()
+          setCleaningStats(csJson.data || null)
+        }
+
+        if (predRes && predRes.ok) {
+          const pJson = await predRes.json()
+          setPredictiveDischarges(pJson.data || [])
+        }
       } else {
         showToast('Failed to load some hospital data', 'error')
       }
@@ -203,7 +345,7 @@ export default function AdminDashboard({ user, onLogout }) {
 
     const initLoad = async () => {
       try {
-        const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes] = await Promise.all([
+        const [roomsRes, bedsRes, patientsRes, analyticsRes, doctorsRes, staffRes, histRes, deptRes, cleanQRes, cleanSRes, predRes] = await Promise.all([
           apiFetch('/api/rooms'),
           apiFetch('/api/beds'),
           apiFetch('/api/patients'),
@@ -211,6 +353,10 @@ export default function AdminDashboard({ user, onLogout }) {
           apiFetch('/api/auth/doctors/pending'),
           apiFetch('/api/auth/staff'),
           apiFetch('/api/allocations/history'),
+          apiFetch('/api/departments'),
+          apiFetch('/api/cleaning/queue'),
+          apiFetch('/api/cleaning/statistics'),
+          apiFetch('/api/allocations/predictive-discharges'),
         ])
 
         if (ignore) return
@@ -243,8 +389,26 @@ export default function AdminDashboard({ user, onLogout }) {
             const hJson = await histRes.json()
             setAllocationHistory(hJson.data || [])
           }
-        } else {
-          showToast('Failed to load some hospital data', 'error')
+
+          if (deptRes && deptRes.ok) {
+            const deptJson = await deptRes.json()
+            setDepartments(deptJson.data || [])
+          }
+
+          if (cleanQRes && cleanQRes.ok) {
+            const cqJson = await cleanQRes.json()
+            setCleaningQueue(cqJson.data || [])
+          }
+
+          if (cleanSRes && cleanSRes.ok) {
+            const csJson = await cleanSRes.json()
+            setCleaningStats(csJson.data || null)
+          }
+
+          if (predRes && predRes.ok) {
+            const pJson = await predRes.json()
+            setPredictiveDischarges(pJson.data || [])
+          }
         }
       } catch (err) {
         if (!ignore) {
@@ -270,6 +434,7 @@ export default function AdminDashboard({ user, onLogout }) {
   const availableBeds = beds.filter((b) => b.status === 'AVAILABLE').length
   const occupiedBeds = beds.filter((b) => b.status === 'OCCUPIED').length
   const maintenanceBeds = beds.filter((b) => b.status === 'MAINTENANCE').length
+  const dirtyBeds = beds.filter((b) => b.status === 'DIRTY').length
   const activePatients = patients.filter((p) => p.status === 'ADMITTED').length
 
   // Wards list for filter
@@ -700,6 +865,18 @@ export default function AdminDashboard({ user, onLogout }) {
       title: 'Bed Allocation Audit Trail & History',
       desc: 'Comprehensive compliance log of all algorithm-recommended and manually overridden bed allocations',
     },
+    departments: {
+      title: 'Department Structure & 100-Bed Capacity Matrix',
+      desc: 'Five core hospital clinical departments, ward hierarchy, and room-to-bed allocation',
+    },
+    cleaning: {
+      title: 'Bed Sanitization & Cleaning Queue',
+      desc: 'Track discharged dirty beds, clinical turnaround priorities, cleaner assignments, and completion',
+    },
+    'predictive-discharges': {
+      title: 'Predictive Discharges & Pending Available Beds',
+      desc: 'Track admitted inpatients with upcoming expected discharge dates for proactive bed planning',
+    },
   }
 
   return (
@@ -784,6 +961,48 @@ export default function AdminDashboard({ user, onLogout }) {
           >
             <span>📜</span> Allocation History ({allocationHistory.length})
           </button>
+          <button
+            className={`nav-item ${activeTab === 'departments' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('departments')
+              loadDepartments()
+            }}
+          >
+            <span>🏢</span> Departments ({departments.length})
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'cleaning' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('cleaning')
+              loadCleaningData()
+            }}
+          >
+            <span>🧹</span> Cleaning Queue
+            {cleaningQueue.length > 0 && (
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  backgroundColor: '#f59e0b',
+                  color: '#ffffff',
+                  fontSize: '0.72rem',
+                  fontWeight: '700',
+                  padding: '0.15rem 0.5rem',
+                  borderRadius: '9999px',
+                }}
+              >
+                {cleaningQueue.length}
+              </span>
+            )}
+          </button>
+          <button
+            className={`nav-item ${activeTab === 'predictive-discharges' ? 'active' : ''}`}
+            onClick={() => {
+              setActiveTab('predictive-discharges')
+              loadPredictiveDischarges()
+            }}
+          >
+            <span>⏳</span> Predictive Discharges ({predictiveDischarges.length})
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -862,10 +1081,10 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
           </div>
           <div className="kpi-card">
-            <div className="kpi-icon amber">🛠️</div>
+            <div className="kpi-icon amber">🧹</div>
             <div>
-              <div className="kpi-label">In Maintenance</div>
-              <div className="kpi-value amber-text">{maintenanceBeds}</div>
+              <div className="kpi-label">Dirty (Sanitizing)</div>
+              <div className="kpi-value amber-text">{dirtyBeds}</div>
             </div>
           </div>
           <div className="kpi-card">
@@ -2189,7 +2408,356 @@ export default function AdminDashboard({ user, onLogout }) {
             </div>
           </section>
         )}
+
+        {/* Tab 9: Department Structure & Capacity */}
+        {activeTab === 'departments' && (
+          <section>
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Hospital Clinical Departments &amp; 100-Bed Matrix ({departments.length})</h3>
+                  <p className="form-desc">
+                    Comprehensive hierarchy: 5 clinical departments, specialized ward equipment, rooms, and live bed capacities
+                  </p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={loadDepartments} disabled={loadingDepartments}>
+                  🔄 Refresh Departments
+                </button>
+              </div>
+              <div className="card-body">
+                {departments.length === 0 ? (
+                  <p className="empty-text">Loading department hierarchy...</p>
+                ) : (
+                  <div className="department-grid">
+                    {departments.map((dept) => (
+                      <div key={dept.id} className="department-card">
+                        <div>
+                          <div className="dept-header">
+                            <div>
+                              <h4 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text-primary)' }}>{dept.name}</h4>
+                              <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.2rem' }}>
+                                Head: <strong>{dept.headOfDepartment || 'Clinical Chief'}</strong>
+                              </div>
+                            </div>
+                            <span className="dept-code-tag">{dept.code}</span>
+                          </div>
+                          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0' }}>
+                            {dept.description || 'Specialized clinical care unit.'}
+                          </p>
+
+                          <div className="dept-stats-row">
+                            <div className="dept-stat-item">
+                              <div className="dept-stat-value">{dept.totalRooms}</div>
+                              <div className="dept-stat-label">Rooms</div>
+                            </div>
+                            <div className="dept-stat-item">
+                              <div className="dept-stat-value">{dept.totalBeds}</div>
+                              <div className="dept-stat-label">Total Beds</div>
+                            </div>
+                            <div className="dept-stat-item">
+                              <div className="dept-stat-value green-text">{dept.availableBeds}</div>
+                              <div className="dept-stat-label">Available</div>
+                            </div>
+                            <div className="dept-stat-item">
+                              <div className="dept-stat-value red-text">{dept.occupiedBeds}</div>
+                              <div className="dept-stat-label">Occupied</div>
+                            </div>
+                          </div>
+
+                          <div style={{ marginTop: '0.5rem' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', marginBottom: '0.25rem' }}>
+                              <span>Occupancy Rate</span>
+                              <strong>{dept.occupancyRate}%</strong>
+                            </div>
+                            <div style={{ width: '100%', height: '8px', background: '#e2e8f0', borderRadius: '4px', overflow: 'hidden' }}>
+                              <div
+                                style={{
+                                  width: `${Math.min(dept.occupancyRate, 100)}%`,
+                                  height: '100%',
+                                  background: dept.occupancyRate > 85 ? '#ef4444' : dept.occupancyRate > 60 ? '#f59e0b' : '#10b981',
+                                }}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9', display: 'flex', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          {dept.code === 'ICU' && <span className="badge-clinical badge-icu">Vital Monitoring • Ventilators</span>}
+                          {dept.code === 'ISO' && <span className="badge-clinical badge-iso">Negative Pressure • HEPA Containment</span>}
+                          {dept.code === 'EMERG' && <span className="badge-clinical badge-overflow">Triage &amp; Resuscitation • High Priority</span>}
+                          {dept.code === 'SURG' && <span className="badge-clinical badge-icu">Post-Op Telemetry • Recovery</span>}
+                          {dept.code === 'GEN' && <span className="badge-clinical badge-budget-yes">Standard Care • Step-down</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Tab 10: Cleaning & Sanitization Queue */}
+        {activeTab === 'cleaning' && (
+          <section>
+            <div className="card" style={{ marginBottom: '1.5rem' }}>
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Turnaround Performance &amp; Sanitization Metrics</h3>
+                  <p className="form-desc">Real-time statistics for hospital bed sanitization and turnaround time</p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={loadCleaningData} disabled={loadingCleaning}>
+                  🔄 Refresh Queue
+                </button>
+              </div>
+              <div className="card-body">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                  <div style={{ padding: '1rem', background: '#fffbeb', borderRadius: '8px', border: '1px solid #fef3c7' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#b45309', fontWeight: 600 }}>DIRTY BEDS IN QUEUE</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#92400e' }}>
+                      {cleaningStats ? cleaningStats.totalDirtyBeds : cleaningQueue.filter(q => q.status === 'DIRTY').length}
+                    </div>
+                  </div>
+                  <div style={{ padding: '1rem', background: '#eff6ff', borderRadius: '8px', border: '1px solid #dbeafe' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#1e40af', fontWeight: 600 }}>IN-PROGRESS SANITIZATION</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#1e3a8a' }}>
+                      {cleaningStats ? cleaningStats.inProgressCount : cleaningQueue.filter(q => q.status === 'IN_PROGRESS').length}
+                    </div>
+                  </div>
+                  <div style={{ padding: '1rem', background: '#f0fdf4', borderRadius: '8px', border: '1px solid #dcfce7' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#166534', fontWeight: 600 }}>COMPLETED TODAY</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#14532d' }}>
+                      {cleaningStats ? cleaningStats.completedToday : 0}
+                    </div>
+                  </div>
+                  <div style={{ padding: '1rem', background: '#faf5ff', borderRadius: '8px', border: '1px solid #f3e8ff' }}>
+                    <div style={{ fontSize: '0.8rem', color: '#6b21a8', fontWeight: 600 }}>AVG TURNAROUND TIME</div>
+                    <div style={{ fontSize: '1.8rem', fontWeight: 700, color: '#581c87' }}>
+                      {cleaningStats && cleaningStats.averageTurnaroundMinutes > 0 ? `${cleaningStats.averageTurnaroundMinutes} mins` : '20 mins (Est.)'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3>Live Bed Cleaning Queue ({cleaningQueue.length})</h3>
+                <p className="form-desc">
+                  Prioritized by clinical acuity (ICU/Emergency Priority 1, Surgical/Isolation Priority 2, General Priority 3). Discharged beds are strictly unallocatable until confirmed cleaned.
+                </p>
+              </div>
+              <div className="card-body">
+                {cleaningQueue.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>✨</div>
+                    <p style={{ fontWeight: 600, color: '#1e293b' }}>All Hospital Beds Cleaned &amp; Sanitized</p>
+                    <p style={{ fontSize: '0.85rem' }}>No discharged dirty beds waiting in the sanitization queue.</p>
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Priority</th>
+                          <th>Bed Number</th>
+                          <th>Room</th>
+                          <th>Department</th>
+                          <th>Dirty Since</th>
+                          <th>Status</th>
+                          <th>Assigned Cleaner</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {cleaningQueue.map((item) => (
+                          <tr key={item.id}>
+                            <td>
+                              <span className={`priority-pill priority-${item.priority || 3}`}>
+                                {item.priority === 1 ? '🚨 Urgent (P1)' : item.priority === 2 ? '⚠️ High (P2)' : 'Standard (P3)'}
+                              </span>
+                            </td>
+                            <td><strong>{item.bedNumber}</strong></td>
+                            <td>Room {item.roomNumber}</td>
+                            <td>{item.departmentName}</td>
+                            <td>{item.dirtyAt ? new Date(item.dirtyAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently'}</td>
+                            <td>
+                              <span className={`status-badge ${item.status}`}>
+                                {item.status}
+                              </span>
+                            </td>
+                            <td>
+                              {item.assignedTo ? (
+                                <strong>👤 {item.assignedTo}</strong>
+                              ) : (
+                                <span style={{ color: '#94a3b8' }}>Unassigned</span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                                <button
+                                  className="btn btn-secondary btn-sm"
+                                  onClick={() => {
+                                    setAssigningBedId(item.bedId)
+                                    setCleanerAssignName(item.assignedTo || '')
+                                  }}
+                                >
+                                  Assign Cleaner
+                                </button>
+                                <button
+                                  className="btn btn-primary btn-sm"
+                                  onClick={() => {
+                                    setCompletingBedId(item.bedId)
+                                    setCompletionNotes('Deep sanitized with hospital disinfectant and fresh linens.')
+                                  }}
+                                >
+                                  Complete Cleaning
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* Tab 11: Predictive Discharges & Pending Available Beds */}
+        {activeTab === 'predictive-discharges' && (
+          <section>
+            <div className="card">
+              <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3>Predictive Discharges &amp; Pending Available Beds ({predictiveDischarges.length})</h3>
+                  <p className="form-desc">
+                    Inpatients with expected discharge dates tracked within 48 hours for advance capacity planning. (Strict invariant: beds remain occupied and cannot be allocated until discharge &amp; sanitization).
+                  </p>
+                </div>
+                <button className="btn btn-secondary btn-sm" onClick={loadPredictiveDischarges} disabled={loadingPredictive}>
+                  🔄 Refresh List
+                </button>
+              </div>
+              <div className="card-body">
+                {predictiveDischarges.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: '#64748b' }}>
+                    <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                    <p style={{ fontWeight: 600, color: '#1e293b' }}>No Upcoming Expected Discharges</p>
+                    <p style={{ fontSize: '0.85rem' }}>No active inpatients are scheduled for discharge in the next 48 hours.</p>
+                  </div>
+                ) : (
+                  <div className="table-responsive">
+                    <table className="data-table">
+                      <thead>
+                        <tr>
+                          <th>Patient MRN</th>
+                          <th>Patient Name</th>
+                          <th>Department / Ward</th>
+                          <th>Room &amp; Bed</th>
+                          <th>Daily Rate</th>
+                          <th>Admission Date</th>
+                          <th>Expected Discharge Target</th>
+                          <th>Predictive Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {predictiveDischarges.map((p) => (
+                          <tr key={p.id}>
+                            <td><strong>{p.patientCode}</strong></td>
+                            <td><strong>{p.name}</strong></td>
+                            <td>{p.wardDepartment || 'General'}</td>
+                            <td>
+                              <strong>Bed {p.bedNumber}</strong> (Room {p.roomNumber})
+                            </td>
+                            <td>{p.dailyRate ? `$${p.dailyRate}/day` : 'Standard'}</td>
+                            <td>{p.admissionDate ? new Date(p.admissionDate).toLocaleDateString() : 'N/A'}</td>
+                            <td>
+                              <span style={{ color: '#059669', fontWeight: 600 }}>
+                                ⏳ {p.expectedDischargeDate ? new Date(p.expectedDischargeDate).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Target not set'}
+                              </span>
+                            </td>
+                            <td>
+                              <span className="badge badge-warning" title="Bed cannot be allocated until patient is discharged and sanitization is completed">
+                                PENDING_AVAILABLE (Occupied)
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
       </main>
+
+      {/* Assign Cleaner Modal */}
+      {assigningBedId && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Assign Sanitation Staff to Bed</h3>
+              <button type="button" className="btn-close" onClick={() => setAssigningBedId(null)}>×</button>
+            </div>
+            <form onSubmit={handleAssignCleaner}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label>Staff Cleaner Name or ID *</label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    placeholder="e.g. Cleaner Alice / Staff ID #504"
+                    value={cleanerAssignName}
+                    onChange={(e) => setCleanerAssignName(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setAssigningBedId(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Assign Cleaner</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Complete Cleaning Modal */}
+      {completingBedId && (
+        <div className="modal-backdrop">
+          <div className="modal-dialog">
+            <div className="modal-header">
+              <h3>Confirm Bed Cleaning &amp; Sanitization</h3>
+              <button type="button" className="btn-close" onClick={() => setCompletingBedId(null)}>×</button>
+            </div>
+            <form onSubmit={handleCompleteCleaning}>
+              <div className="modal-body">
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+                  Confirming completion will transition this bed to <strong>AVAILABLE</strong> status and update the hospital capacity matrix.
+                </p>
+                <div className="form-group">
+                  <label>Inspection Notes / Sanitization Log</label>
+                  <textarea
+                    className="form-control"
+                    rows="3"
+                    value={completionNotes}
+                    onChange={(e) => setCompletionNotes(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setCompletingBedId(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Confirm Cleaned &amp; Ready</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Provision Portal Account Modal */}
       {provisioningPatient && (
